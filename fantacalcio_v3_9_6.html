@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Asta Fantacalcio v3.9.5</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+    <link rel="stylesheet" href="fantacalcio_styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Asta Fantacalcio</h1>
+        </header>
+
+        <!-- SETUP NOMI SQUADRE -->
+        <div id="setupNamesSection" class="setup-section">
+            <h2>Configurazione Squadre</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 15px;">Digita i nomi delle 8 squadre</p>
+            <div class="setup-grid" id="setupNamesGrid"></div>
+            <div class="setup-button-group">
+                <button onclick="confirmTeamNames()">Conferma Nomi</button>
+                <button class="secondary" onclick="resetAll()">Reset Completo</button>
+            </div>
+        </div>
+
+        <!-- SETUP ORDINE -->
+        <div id="setupSection" class="setup-section" style="display: none;">
+            <h2>Setup Ordine Estrazione</h2>
+            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 15px;">Seleziona l'ordine in cui le squadre apriranno i giocatori</p>
+            <div class="setup-grid" id="setupGrid"></div>
+            <div class="setup-button-group">
+                <button onclick="confirmOrder()">Conferma Ordine</button>
+                <button class="secondary" onclick="resetSetup()">Resetta</button>
+            </div>
+        </div>
+
+        <!-- ORDINE CRISTALLIZZATO -->
+        <div id="orderDisplay" class="order-display"></div>
+
+        <!-- FILTRI (1 riga) -->
+        <div class="filters-section">
+            <div class="filter-row">
+                <div class="filter-item">
+                    <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Cerca</label>
+                    <div style="position: relative;">
+                        <input type="text" id="availableSearch" placeholder="Nome o squadra..." onkeyup="filterAvailable()" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 13px;">
+                        <button id="clearAvailableSearchBtn" onclick="clearAvailableSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 18px; padding: 0; display: none;">✕</button>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Ruolo</label>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" onclick="toggleRoleFilter('POR', this)">P</button>
+                        <button class="filter-btn" onclick="toggleRoleFilter('DIF', this)">D</button>
+                        <button class="filter-btn" onclick="toggleRoleFilter('CEN', this)">C</button>
+                        <button class="filter-btn" onclick="toggleRoleFilter('ATT', this)">A</button>
+                    </div>
+                </div>
+
+                <div class="filter-item">
+                    <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Squadra</label>
+                    <select id="filterTeam" onchange="filterAvailable()" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 13px;">
+                        <option value="">Tutte</option>
+                    </select>
+                </div>
+
+                <div class="filter-item">
+                    <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Ordina</label>
+                    <div class="filter-buttons">
+                        <button class="sort-btn active" onclick="toggleSortOrder('name-asc', this)">A-Z</button>
+                        <button class="sort-btn" onclick="toggleSortOrder('name-desc', this)">Z-A</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN LAYOUT 4-COLONNE -->
+        <div class="main-layout-4col">
+            <!-- COLONNA 1-2: Giocatori Disponibili (2 colonne) -->
+            <div class="col-players-left">
+                <div class="panel">
+                    <h3>Giocatori Disponibili</h3>
+                    <div class="players-list" id="playersList"></div>
+                </div>
+            </div>
+
+            <!-- COLONNA 3: Registra Acquisto -->
+            <div class="col-register">
+                <div class="panel">
+                    <h2>Registra Acquisto</h2>
+                    
+                    <div class="form-group">
+                        <label>Giocatore</label>
+                        <div class="autocomplete-container" style="position: relative;">
+                            <input type="text" id="playerSearch" placeholder="Cerca giocatore..." autocomplete="off">
+                            <button id="clearSearchBtn" onclick="clearPlayerSearch()" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: #60a5fa; cursor: pointer; font-size: 18px; padding: 0; display: none;">✕</button>
+                            <div id="autocompleteList" class="autocomplete-list"></div>
+                        </div>
+                    </div>
+
+                    <div id="playerInfo" style="background: #0f172a; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; display: none;">
+                        <div style="color: #94a3b8;">Squadra: <span id="infoSquad" style="color: #60a5fa;"></span></div>
+                        <div style="color: #94a3b8; margin-top: 4px;">Ruolo: <span id="infoRole" style="color: #60a5fa;"></span></div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Prezzo (M)</label>
+                        <input type="number" id="playerPrice" placeholder="Prezzo">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Acquistata da</label>
+                        <div class="team-buttons" id="teamButtons"></div>
+                    </div>
+
+                    <div id="messageDiv" class="message-div"></div>
+
+                    <div class="button-group" style="display: flex; gap: 10px; margin-top: 15px; flex-direction: column;">
+                        <button onclick="clearForm()" class="secondary">Pulisci</button>
+                        <button onclick="downloadAstaJSON()" class="secondary">📥 Scarica Asta</button>
+                        <button onclick="document.getElementById('loadAstaInput').click()" class="secondary">📤 Carica Asta</button>
+                        <button onclick="resetRose()" class="secondary" style="background: #7c3aed; border-color: #6d28d9;">🔄 Reset Rose</button>
+                        <input type="file" id="loadAstaInput" accept=".json" style="display: none;" onchange="loadAstaJSON(event)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLONNA 4: La mia squadra (Sticky) -->
+            <div class="col-my-squad">
+                <div class="my-squad-panel sticky">
+                    <h2><span id="myTeamName">Squadra 1</span></h2>
+
+                    <div class="squad-stats">
+                        <div class="stat-box">
+                            <div class="stat-label">Speso</div>
+                            <div class="stat-value" id="mySpent">0</div>
+                            <div class="stat-percentage" id="mySpentPct">0%</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-label">Budget Rimasto</div>
+                            <div class="stat-value" id="budgetLeft">500</div>
+                            <div class="stat-percentage" id="budgetLeftPct">100%</div>
+                        </div>
+                    </div>
+
+                    <div style="background: #0f172a; padding: 12px; border-radius: 4px; text-align: center; margin-bottom: 20px; font-size: 13px;">
+                        <span style="color: #94a3b8;">Giocatori: </span>
+                        <span id="playerCount" style="color: #60a5fa; font-weight: bold;">0/25</span>
+                    </div>
+
+                    <h3>Per Ruolo</h3>
+                    <div class="role-stats">
+                        <div class="role-stat">
+                            <div class="label">Portieri</div>
+                            <div class="count" id="count-POR">0/3</div>
+                        </div>
+                        <div class="role-stat">
+                            <div class="label">Difensori</div>
+                            <div class="count" id="count-DIF">0/8</div>
+                        </div>
+                        <div class="role-stat">
+                            <div class="label">Centrocampisti</div>
+                            <div class="count" id="count-CEN">0/8</div>
+                        </div>
+                        <div class="role-stat">
+                            <div class="label">Attaccanti</div>
+                            <div class="count" id="count-ATT">0/6</div>
+                        </div>
+                    </div>
+
+                    <div style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid #334155;">
+                        <div style="font-size: 11px; color: #93c5fd; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Strategia:</div>
+                        <div class="strategy-buttons-group strategy-group-my-squad">
+                            <button class="strategy-btn active" data-strategy="bilanciata" onclick="switchStrategy('bilanciata')">BILANCIATA</button>
+                            <button class="strategy-btn" data-strategy="conservativa" onclick="switchStrategy('conservativa')">CONSERVATIVA</button>
+                            <button class="strategy-btn" data-strategy="aggressiva" onclick="switchStrategy('aggressiva')">AGGRESSIVA</button>
+                            <button class="strategy-btn" data-strategy="centrocampo-first" onclick="switchStrategy('centrocampo-first')">CEN-FIRST</button>
+                        </div>
+                    </div>
+                    <div id="strategicDashboard" style="background: #1e293b; padding: 12px; border-radius: 4px; border: 1px solid #334155; font-size: 11px; line-height: 1.6;"></div>
+
+                    <h3 style="margin-top: 15px;">I miei giocatori</h3>
+                    <div id="mySquadList" class="my-squad-list">
+                        <div style="padding: 20px; text-align: center; color: #64748b;">Nessun giocatore ancora</div>
+                    </div>
+
+                    <button onclick="clearMySquad()" class="secondary" style="width: 100%;">Cancella Squadra</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANORAMICA SQUADRE -->
+        <div class="overview-section">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h3>Panoramica Squadre</h3>
+                <div style="display: flex; gap: 6px; align-items: center;">
+                    <div class="strategy-buttons-group strategy-group-overview" style="grid-template-columns: auto auto auto auto; gap: 4px;">
+                        <button class="strategy-btn active" data-strategy="bilanciata" onclick="switchStrategy('bilanciata')">BILANCIATA</button>
+                        <button class="strategy-btn" data-strategy="conservativa" onclick="switchStrategy('conservativa')">CONSERVATIVA</button>
+                        <button class="strategy-btn" data-strategy="aggressiva" onclick="switchStrategy('aggressiva')">AGGRESSIVA</button>
+                        <button class="strategy-btn" data-strategy="centrocampo-first" onclick="switchStrategy('centrocampo-first')">CEN-FIRST</button>
+                    </div>
+                    <div style="color: #475569; font-size: 18px; margin: 0 4px;">|</div>
+                    <div class="toggle-container">
+                        <span class="toggle-label" id="toggleLabel">Espanso</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggleViewCheckbox" onchange="toggleOverviewMode()" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="teams-grid" id="teamsGrid"></div>
+        </div>
+
+        <!-- AGENTE IA (1 riga) -->
+        <div class="ia-panel-row">
+            <div class="ia-panel">
+                <h2>Agente IA</h2>
+                <div id="chatHistory" class="chat-history"></div>
+                <div id="aiError" class="ai-error" style="display: none;"></div>
+                <div class="ia-input-group">
+                    <input type="text" id="aiQuestion" placeholder="Chiedi un consiglio...">
+                    <button onclick="askAI()">Invia</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT ESTERNI -->
+    <script src="players_data.js"></script>
+    <script src="fantacalcio_app.js"></script>
+    <script src="fantacalcio_ai.js"></script>
+</body>
+</html>
