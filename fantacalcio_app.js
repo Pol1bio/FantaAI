@@ -50,7 +50,7 @@
             }
         };
 
-        let currentStrategy = 'bilanciata'; // default
+        var currentStrategy = 'bilanciata'; // default
 
         // Mappa di squadre Serie A → abbreviazioni
         const TEAM_ABBR = {
@@ -1094,6 +1094,31 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                     p.style.overflowY = 'visible';
                 });
             }
+        }
+
+        // ==========================================
+        // COPIA REPORT NEGLI APPUNTI
+        // ==========================================
+        
+        function copiaReport() {
+            if (typeof formatReportForClaude === 'undefined') {
+                alert('Errore: agente IA non caricato.');
+                return;
+            }
+            
+            const txt = formatReportForClaude();
+            navigator.clipboard.writeText(txt).then(() => {
+                const c = document.getElementById('chatHistory');
+                c.innerHTML += `<div class="message assistant"><div class="content">
+                    📋 <strong>Report copiato negli appunti!</strong> Incollalo nella chat con Claude per chiedere consigli.
+                </div></div>`;
+                c.scrollTop = c.scrollHeight;
+                
+                // Svuota il campo domanda
+                document.getElementById('aiQuestion').value = '';
+            }).catch((err) => {
+                alert('Errore nella copia: ' + err.message);
+            });
         }
 
         // Carica dati e inizializza filtri al caricamento completo della pagina
