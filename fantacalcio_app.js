@@ -1100,25 +1100,41 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
         // COPIA REPORT NEGLI APPUNTI
         // ==========================================
         
-        function copiaReport() {
+        function inviaReport() {
             if (typeof formatReportForClaude === 'undefined') {
                 alert('Errore: agente IA non caricato.');
                 return;
             }
             
-            const txt = formatReportForClaude();
-            navigator.clipboard.writeText(txt).then(() => {
-                const c = document.getElementById('chatHistory');
-                c.innerHTML += `<div class="message assistant"><div class="content">
-                    📋 <strong>Report copiato negli appunti!</strong> Incollalo nella chat con Claude per chiedere consigli.
-                </div></div>`;
-                c.scrollTop = c.scrollHeight;
-                
-                // Svuota il campo domanda
-                document.getElementById('aiQuestion').value = '';
-            }).catch((err) => {
-                alert('Errore nella copia: ' + err.message);
+            const report = formatReportForClaude();
+            const timestamp = new Date().toISOString();
+            
+            // Salva in localStorage locale
+            let reports = JSON.parse(localStorage.getItem('astaReports') || '[]');
+            reports.push({
+                id: reports.length + 1,
+                report,
+                timestamp,
+                receivedAt: new Date().toISOString()
             });
+            localStorage.setItem('astaReports', JSON.stringify(reports));
+            
+            // Invia a Vercel (per tracking, anche se Vercel non persiste)
+            fetch('/api/reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ report, timestamp })
+            }).catch(err => console.log('Vercel call:', err));
+            
+            // Feedback all'utente
+            const c = document.getElementById('chatHistory');
+            c.innerHTML += `<div class="message assistant"><div class="content">
+                ✅ <strong>Report inviato!</strong> (#${reports.length}) — Apri la <a href="reports.html" target="_blank">dashboard</a> per vederlo in tempo reale.
+            </div></div>`;
+            c.scrollTop = c.scrollHeight;
+            
+            // Svuota il campo domanda
+            document.getElementById('aiQuestion').value = '';
         }
 
         // Carica dati e inizializza filtri al caricamento completo della pagina
