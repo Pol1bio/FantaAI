@@ -1,11 +1,19 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.3 - APP LOGIC
+        // FANTACALCIO v3.9.9.3b - APP LOGIC
         // ==========================================
 
         // COSTANTI
         const BUDGET_TOTAL = 500;
         const PLAYERS_PER_SQUAD = 25;
         const ROLE_LIMITS = { POR: 3, DIF: 8, CEN: 8, ATT: 6 };
+
+        // Liste per generazione nomi casuali (generaSquadreRandom)
+        const PAROLE_NOMI = [
+            'Falco', 'Orso', 'Leone', 'Tigre', 'Lupo', 'Aquila', 'Drago', 'Serpente',
+            'Fuoco', 'Ghiaccio', 'Tempesta', 'Fulmine', 'Nebbia', 'Ombra', 'Luce', 'Oscurità',
+            'Rosso', 'Blu', 'Verde', 'Oro', 'Argento', 'Nero', 'Bianco', 'Viola',
+            'Nord', 'Sud', 'Est', 'Ovest', 'Caos', 'Ordine', 'Vuoto', 'Eterno'
+        ];
 
         // VARIABILI GLOBALI - Stato dell'applicazione
         let teams = {};
@@ -267,6 +275,7 @@
             
             localStorage.removeItem('fantacalcio_v3_1');
             localStorage.removeItem('fantacalcio_config_completed');
+            localStorage.removeItem('astaReports');
             teamNamesConfirmed = false;
             orderConfirmed = false;
             teamOrder = [];
@@ -285,7 +294,52 @@
             showMessage('Tutto azzerato! ✨', 'success');
         }
 
-        // SETUP ORDINE
+        // GENERATORE SQUADRE RANDOM
+        function generaSquadreRandom() {
+            if (!confirm('Generare 8 nomi casuali e sorteggio? Sostituisce la configurazione attuale.')) {
+                return;
+            }
+            
+            // Genera 8 nomi casuali
+            const nomi = [];
+            const usate = new Set();
+            while (nomi.length < 8) {
+                const idx = Math.floor(Math.random() * PAROLE_NOMI.length);
+                const parola = PAROLE_NOMI[idx];
+                if (!usate.has(idx)) {
+                    nomi.push(parola);
+                    usate.add(idx);
+                }
+            }
+            
+            // Assegna nomi alle 8 squadre
+            for (let i = 1; i <= 8; i++) {
+                teams[i].name = nomi[i - 1];
+            }
+            teamNamesConfirmed = true;
+            
+            // Genera sorteggio casuale dell'ordine di estrazione
+            const ordine = Array.from({length: 8}, (_, i) => i + 1);
+            for (let i = ordine.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [ordine[i], ordine[j]] = [ordine[j], ordine[i]];
+            }
+            teamOrder = ordine;
+            orderConfirmed = true;
+            
+            // Mostra il setup completato
+            document.getElementById('setupNamesSection').style.display = 'none';
+            document.getElementById('setupSection').style.display = 'none';
+            document.getElementById('orderDisplay').style.display = 'block';
+            document.getElementById('orderDisplay').classList.add('active');
+            
+            initTeamButtons();
+            renderTeamsOverview();
+            loadData();
+            updateDisplay();
+            
+            showMessage('✨ ' + nomi.join(', ') + ' — Pronto a giocare!', 'success');
+        }
         function initSetup() {
             const grid = document.getElementById('setupGrid');
             grid.innerHTML = '';
