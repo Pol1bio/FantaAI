@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9c - APP LOGIC
+        // FANTACALCIO v3.9.9d - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -597,26 +597,26 @@
 
             // Riga 1: nome, tier, verdetto
             html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                <span style="color:#60a5fa;font-weight:700;font-size:14px;">${escapeHtml(p.name)}</span>
-                <span class="${tierCls}" style="font-weight:700;font-size:11px;padding:2px 6px;border-radius:3px;">${tier}</span>
-                <span style="color:#94a3b8;font-size:11px;">${escapeHtml(p.team || '')} · ${p.role}</span>
+                <span style="color:#60a5fa;font-weight:700;font-size:15px;">${escapeHtml(p.name)}</span>
+                <span class="${tierCls}" style="font-weight:700;font-size:12px;padding:2px 6px;border-radius:3px;">${tier}</span>
+                <span style="color:#94a3b8;font-size:12px;">${escapeHtml(p.team || '')} · ${p.role}</span>
             </div>`;
 
             // Riga 2: i due numeri che contano in asta
             html += `<div style="display:flex;gap:8px;margin-bottom:8px;">
                 <div style="flex:1;background:#1e293b;padding:6px 8px;border-radius:4px;">
-                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;">Mercato</div>
-                    <div style="font-size:15px;color:#e2e8f0;font-weight:700;">${pma}</div>
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;">Mercato</div>
+                    <div style="font-size:16px;color:#e2e8f0;font-weight:700;">${pma}</div>
                 </div>
                 <div style="flex:1;background:#1e293b;padding:6px 8px;border-radius:4px;${tetto != null ? 'border:1px solid #4ade8055;' : ''}">
-                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;">Non superare</div>
-                    <div style="font-size:15px;color:${tetto != null ? '#4ade80' : '#64748b'};font-weight:700;">${tetto != null ? tetto : '—'}</div>
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;">Non superare</div>
+                    <div style="font-size:16px;color:${tetto != null ? '#4ade80' : '#64748b'};font-weight:700;">${tetto != null ? tetto : '—'}</div>
                 </div>
             </div>`;
 
             // Riga 3: indicatori
             const chip = (label, val, color) =>
-                `<span style="font-size:10px;color:#94a3b8;">${label} <b style="color:${color};">${val}</b></span>`;
+                `<span style="font-size:11px;color:#94a3b8;">${label} <b style="color:${color};">${val}</b></span>`;
             const chips = [];
             if (p.qualityScore != null) chips.push(chip('Qualità', Math.round(p.qualityScore), '#e2e8f0'));
             if (p.valueScore != null) chips.push(chip('Convenienza', Math.round(p.valueScore),
@@ -628,30 +628,30 @@
             }
 
             if (verd) {
-                html += `<div style="font-size:11px;font-weight:700;color:${verdColor[verd] || '#cbd5e1'};margin-bottom:8px;">${escapeHtml(verd)}</div>`;
+                html += `<div style="font-size:12px;font-weight:700;color:${verdColor[verd] || '#cbd5e1'};margin-bottom:8px;">${escapeHtml(verd)}</div>`;
             }
 
             // Rigoristi e piazzati: valgono punti veri
             if (sch && sch.piazzati && sch.piazzati.length) {
-                html += `<div style="font-size:10px;color:#fbbf24;margin-bottom:6px;">⚽ ${sch.piazzati.map(escapeHtml).join(', ')}</div>`;
+                html += `<div style="font-size:11px;color:#fbbf24;margin-bottom:6px;">⚽ ${sch.piazzati.map(escapeHtml).join(', ')}</div>`;
             }
             if (sch && sch.rischi && sch.rischi.length) {
-                html += `<div style="font-size:10px;color:#f87171;margin-bottom:6px;">⚠️ ${sch.rischi.map(escapeHtml).join(', ')}</div>`;
+                html += `<div style="font-size:11px;color:#f87171;margin-bottom:6px;">⚠️ ${sch.rischi.map(escapeHtml).join(', ')}</div>`;
             }
 
             // Compagni di reparto: solo i primi 3, gli altri sono rumore in asta
             if (sch && sch.compagniDiReparto && sch.compagniDiReparto.length) {
                 const top = sch.compagniDiReparto.slice(0, 3);
                 html += `<div style="border-top:1px solid #334155;padding-top:6px;margin-top:6px;">
-                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Stesso ruolo, stessa squadra</div>`;
+                    <div style="font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Stesso ruolo, stessa squadra</div>`;
                 top.forEach(c => {
-                    html += `<div style="font-size:10px;color:#94a3b8;display:flex;justify-content:space-between;">
+                    html += `<div style="font-size:11px;color:#94a3b8;display:flex;justify-content:space-between;">
                         <span>${escapeHtml(c.nome)} <span style="color:#64748b;">${c.tier}</span></span>
                         <span>${c.titolarita}% · ${c.prezzoMercato}</span>
                     </div>`;
                 });
                 if (sch.compagniDiReparto.length > 3) {
-                    html += `<div style="font-size:9px;color:#475569;margin-top:2px;">+${sch.compagniDiReparto.length - 3} altri</div>`;
+                    html += `<div style="font-size:10px;color:#475569;margin-top:2px;">+${sch.compagniDiReparto.length - 3} altri</div>`;
                 }
                 html += `</div>`;
             }
