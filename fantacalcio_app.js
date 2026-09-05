@@ -282,6 +282,15 @@
             conversationHistory = [];
             initializeTeams();
             
+            // Ripulisci i report live dal DOM
+            const reportBody = document.getElementById('reportLiveBody');
+            if (reportBody) reportBody.innerHTML = '';
+            const reportCount = document.getElementById('reportLiveCount');
+            if (reportCount) {
+                reportCount.textContent = '0';
+                reportCount.style.display = 'none';
+            }
+            
             document.getElementById('setupNamesSection').style.display = 'block';
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('orderDisplay').classList.remove('active');
