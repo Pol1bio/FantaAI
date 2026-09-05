@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9b - APP LOGIC
+        // FANTACALCIO v3.9.9c - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1028,27 +1028,11 @@
         window.setSortMode = setSortMode;
 
         // ==========================================
-        // TAB REPORT LIVE NELLA PANORAMICA (A7)
-        // Legge da localStorage: nessuna dipendenza da servizi esterni,
-        // che in asta è quello che conta.
+        // REPORT LIVE PANEL (v3.9.9c)
+        // Pannello collassabile affiancato all'Agente IA
+        // Legge da localStorage: nessuna dipendenza da servizi esterni
         // ==========================================
-        let overviewTab = 'squadre';
-
-        function switchOverviewTab(tab) {
-            overviewTab = tab;
-            const grid = document.getElementById('teamsGrid');
-            const pane = document.getElementById('reportPane');
-            const tS = document.getElementById('tabSquadre');
-            const tR = document.getElementById('tabReport');
-            if (!grid || !pane) return;
-
-            const squadre = tab === 'squadre';
-            grid.style.display = squadre ? '' : 'none';
-            pane.style.display = squadre ? 'none' : 'block';
-            if (tS) tS.classList.toggle('active', squadre);
-            if (tR) tR.classList.toggle('active', !squadre);
-            if (!squadre) renderReportPane();
-        }
+        let reportLiveAperto = true;  // pannello aperto di default
 
         function getReports() {
             try { return JSON.parse(localStorage.getItem('astaReports') || '[]'); }
@@ -1056,26 +1040,37 @@
         }
 
         function aggiornaBadgeReport() {
-            const b = document.getElementById('reportCount');
+            const b = document.getElementById('reportLiveCount');
             if (!b) return;
             const n = getReports().length;
             b.textContent = n;
             b.style.display = n > 0 ? 'inline-block' : 'none';
         }
 
-        function renderReportPane() {
-            const pane = document.getElementById('reportPane');
-            if (!pane) return;
+        function toggleReportLive() {
+            reportLiveAperto = !reportLiveAperto;
+            const body = document.getElementById('reportLiveBody');
+            const chev = document.getElementById('reportLiveChevron');
+            if (!body) return;
+            
+            body.style.display = reportLiveAperto ? 'block' : 'none';
+            if (chev) chev.textContent = reportLiveAperto ? '▾' : '▸';
+            
+            if (reportLiveAperto) renderReportLiveBody();
+        }
+
+        function renderReportLiveBody() {
+            const body = document.getElementById('reportLiveBody');
+            if (!body) return;
             const reports = getReports().slice().reverse(); // più recente in alto
 
             if (!reports.length) {
-                pane.innerHTML = `<div style="padding:30px;text-align:center;color:#64748b;font-size:13px;">
-                    Nessun report ancora. Premi "Invia report" nel pannello Agente IA
-                    per registrare una fotografia dell'asta.</div>`;
+                body.innerHTML = `<div style="padding:20px;text-align:center;color:#64748b;font-size:12px;">
+                    Nessun report ancora. Premi "Invia report" per registrare lo stato dell'asta.</div>`;
                 return;
             }
 
-            pane.innerHTML = reports.map((r, idx) => {
+            body.innerHTML = reports.map((r, idx) => {
                 const t = new Date(r.timestamp);
                 const ora = isNaN(t) ? '' : t.toLocaleTimeString('it-IT');
                 const aperto = idx === 0; // il più recente già aperto
@@ -1099,9 +1094,9 @@
             if (c) c.textContent = aperto ? '▸' : '▾';
         }
 
-        window.switchOverviewTab = switchOverviewTab;
+        window.toggleReportLive = toggleReportLive;
         window.toggleReportCard = toggleReportCard;
-        window.renderReportPane = renderReportPane;
+        window.renderReportLiveBody = renderReportLiveBody;
 
         function removeFromMySquad(playerId) {
             const myTeam = teams[1];
@@ -1593,16 +1588,16 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             });
             localStorage.setItem('astaReports', JSON.stringify(reports));
 
-            // Aggiorna il tab Report Live nella Panoramica
+            // Aggiorna il pannello Report Live
             aggiornaBadgeReport();
-            if (overviewTab === 'report') renderReportPane();
+            if (reportLiveAperto) renderReportLiveBody();
 
             // Feedback all'utente
             const c = document.getElementById('chatHistory');
             c.innerHTML += `<div class="message assistant"><div class="content">
                 ✅ <strong>Report #${reports.length} salvato.</strong>
-                Lo trovi nel tab <em>Report Live</em> della Panoramica Squadre,
-                pronto da copiare.
+                Lo trovi nel pannello <em>Report Live</em> a destra, sopra,
+                pronto da leggere.
             </div></div>`;
             c.scrollTop = c.scrollHeight;
 
