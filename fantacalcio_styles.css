@@ -567,7 +567,7 @@ button.secondary:hover {
 
 .player-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 0.8fr 1fr;
+    grid-template-columns: 2fr 1fr 0.6fr 0.7fr 0.6fr;
     gap: 10px;
     padding: 12px;
     background: #0f172a;
@@ -601,6 +601,28 @@ button.secondary:hover {
 .player-row .status {
     color: #4ade80;
     text-align: right;
+}
+
+/* Colonna TIER: il colore rende la fascia leggibile a colpo d'occhio */
+.player-row .tier {
+    text-align: center;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+.player-row .tier-Aplus   { color: #f87171; background: rgba(248,113,113,0.14); }
+.player-row .tier-A       { color: #fb923c; background: rgba(251,146,60,0.14); }
+.player-row .tier-Aminus  { color: #fbbf24; background: rgba(251,191,36,0.14); }
+.player-row .tier-Aminusminus { color: #a3e635; background: rgba(163,230,53,0.14); }
+.player-row .tier-B       { color: #4ade80; background: rgba(74,222,128,0.12); }
+.player-row .tier-C       { color: #64748b; background: rgba(100,116,139,0.12); }
+
+/* Prezzo medio di mercato */
+.player-row .pma {
+    color: #94a3b8;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
 }
 
 /* OVERVIEW SECTION */
@@ -929,4 +951,209 @@ input:checked + .toggle-slider:before {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #475569;
+}
+
+/* Intestazione colonne della lista giocatori */
+.players-list-header {
+    display: grid;
+    grid-template-columns: 2fr 1fr 0.6fr 0.7fr 0.6fr;
+    gap: 10px;
+    padding: 6px 12px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+    font-weight: 600;
+    border-bottom: 1px solid #334155;
+    margin-bottom: 8px;
+}
+
+/* ==========================================
+   NOTE AVVERSARI (A8)
+   ========================================== */
+.note-panel {
+    margin: 8px 0;
+    border-top: 1px solid #334155;
+    padding-top: 8px;
+}
+
+.note-toggle {
+    width: 100%;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s;
+}
+.note-toggle:hover {
+    background: #263449;
+    color: #cbd5e1;
+}
+
+.note-badge {
+    background: #3b82f6;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+.note-patterns {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin-top: 6px;
+}
+
+.note-check {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 3px 5px;
+    border-radius: 3px;
+    transition: all 0.15s;
+}
+.note-check:hover { background: #1e293b; }
+.note-check.on {
+    color: #e2e8f0;
+    background: rgba(59, 130, 246, 0.12);
+}
+.note-check input {
+    margin: 0;
+    cursor: pointer;
+    accent-color: #3b82f6;
+}
+
+.note-text {
+    width: 100%;
+    margin-top: 6px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    color: #e2e8f0;
+    font-size: 11px;
+    padding: 6px;
+    resize: vertical;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.note-text:focus {
+    outline: none;
+    border-color: #3b82f6;
+}
+
+/* ==========================================
+   SEZIONE UTILITY COLLASSABILE (A6)
+   ========================================== */
+.utility-section {
+    margin-top: 12px;
+    border-top: 1px solid #334155;
+    padding-top: 10px;
+}
+
+.utility-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: transparent;
+    border: 1px solid #334155;
+    color: #64748b;
+    font-size: 12px;
+    padding: 7px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.utility-toggle:hover {
+    color: #94a3b8;
+    border-color: #475569;
+}
+
+.utility-body {
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+/* ==========================================
+   TAB PANORAMICA / REPORT LIVE (A7)
+   ========================================== */
+.overview-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid #334155;
+}
+
+.overview-tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.overview-tab:hover { color: #94a3b8; }
+.overview-tab.active {
+    color: #60a5fa;
+    border-bottom-color: #60a5fa;
+}
+
+.tab-badge {
+    background: #3b82f6;
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 8px;
+    margin-left: 4px;
+}
+
+.report-card {
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    overflow: hidden;
+}
+
+.report-head {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e293b;
+    border: none;
+    color: #cbd5e1;
+    font-size: 12px;
+    padding: 8px 12px;
+    cursor: pointer;
+    text-align: left;
+}
+.report-head:hover { background: #263449; }
+
+.report-body {
+    margin: 0;
+    padding: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    line-height: 1.5;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 420px;
+    overflow-y: auto;
 }

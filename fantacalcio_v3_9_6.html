@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asta Fantacalcio v3.9.7</title>
+    <title>Asta Fantacalcio v3.9.8</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=3971">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=3980">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.7</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.8</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
             </div>
         </header>
@@ -75,6 +75,8 @@
                     <div class="filter-buttons">
                         <button class="sort-btn active" onclick="toggleSortOrder('name-asc', this)">A-Z</button>
                         <button class="sort-btn" onclick="toggleSortOrder('name-desc', this)">Z-A</button>
+                        <button class="sort-btn" onclick="toggleSortOrder('tier', this)">TIER</button>
+                        <button class="sort-btn" onclick="toggleSortOrder('value', this)">VALORE</button>
                     </div>
                 </div>
             </div>
@@ -86,6 +88,13 @@
             <div class="col-players-left">
                 <div class="panel">
                     <h3>Giocatori Disponibili</h3>
+                    <div class="players-list-header">
+                        <div>Nome</div>
+                        <div>Squadra</div>
+                        <div style="text-align:center;">Ruolo</div>
+                        <div style="text-align:center;">Tier</div>
+                        <div style="text-align:right;">Mercato</div>
+                    </div>
                     <div class="players-list" id="playersList"></div>
                 </div>
             </div>
@@ -104,10 +113,7 @@
                         </div>
                     </div>
 
-                    <div id="playerInfo" style="background: #0f172a; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; display: none;">
-                        <div style="color: #94a3b8;">Squadra: <span id="infoSquad" style="color: #60a5fa;"></span></div>
-                        <div style="color: #94a3b8; margin-top: 4px;">Ruolo: <span id="infoRole" style="color: #60a5fa;"></span></div>
-                    </div>
+                    <div id="playerInfo" style="background: #0f172a; padding: 10px; border-radius: 4px; margin-bottom: 12px; font-size: 13px; display: none;"></div>
 
                     <div class="form-group">
                         <label>Prezzo (M)</label>
@@ -123,10 +129,19 @@
 
                     <div class="button-group" style="display: flex; gap: 10px; margin-top: 15px; flex-direction: column;">
                         <button onclick="clearForm()" class="secondary">Pulisci</button>
-                        <button onclick="downloadAstaJSON()" class="secondary">📥 Scarica Asta</button>
-                        <button onclick="document.getElementById('loadAstaInput').click()" class="secondary">📤 Carica Asta</button>
-                        <button onclick="resetRose()" class="secondary" style="background: #7c3aed; border-color: #6d28d9;">🔄 Reset Rose</button>
-                        <input type="file" id="loadAstaInput" accept=".json" style="display: none;" onchange="loadAstaJSON(event)">
+                    </div>
+
+                    <div class="utility-section">
+                        <button class="utility-toggle" onclick="toggleUtility()">
+                            <span>⚙️ Utility</span>
+                            <span id="utilityChevron">▸</span>
+                        </button>
+                        <div id="utilityBody" class="utility-body" style="display:none;">
+                            <button onclick="downloadAstaJSON()" class="secondary">📥 Scarica Asta</button>
+                            <button onclick="document.getElementById('loadAstaInput').click()" class="secondary">📤 Carica Asta</button>
+                            <button onclick="resetRose()" class="secondary" style="background: #7c3aed; border-color: #6d28d9;">🔄 Reset Rose</button>
+                            <input type="file" id="loadAstaInput" accept=".json" style="display: none;" onchange="loadAstaJSON(event)">
+                        </div>
                     </div>
                 </div>
             </div>
@@ -216,7 +231,14 @@
                     </div>
                 </div>
             </div>
+            <div class="overview-tabs">
+                <button class="overview-tab active" id="tabSquadre" onclick="switchOverviewTab('squadre')">Squadre</button>
+                <button class="overview-tab" id="tabReport" onclick="switchOverviewTab('report')">
+                    Report Live <span id="reportCount" class="tab-badge" style="display:none;">0</span>
+                </button>
+            </div>
             <div class="teams-grid" id="teamsGrid"></div>
+            <div id="reportPane" style="display:none;"></div>
         </div>
 
         <!-- AGENTE IA (1 riga) -->
@@ -234,8 +256,8 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=3971"></script>
-    <script src="fantacalcio_app.js?v=3971"></script>
-    <script src="fantacalcio_ai.js?v=3971"></script>
+    <script src="players_data.js?v=3980"></script>
+    <script src="fantacalcio_app.js?v=3980"></script>
+    <script src="fantacalcio_ai.js?v=3980"></script>
 </body>
 </html>

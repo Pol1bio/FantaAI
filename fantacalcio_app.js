@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.7 - APP LOGIC
+        // FANTACALCIO v3.9.8 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -19,6 +19,9 @@
         // Fase in corso: calcolata dai dati, sovrascrivibile manualmente
         // se c'è un errore di registrazione.
         let phaseOverride = null;
+
+        // Quali pannelli note sono aperti (sopravvive ai re-render della griglia)
+        const notePanelAperti = new Set();
 
         // ==========================================
         // LOGICA DI FASE (asta per reparto)
@@ -539,7 +542,7 @@
                 }
 
                 list.innerHTML = filtered.map(p => `
-                    <div class="autocomplete-item" onclick="selectPlayer(${p.id}, '${p.name}', '${p.role}', '${p.team}')">
+                    <div class="autocomplete-item" onclick="selectPlayer(${p.id}, '${escapeAttr(p.name)}', '${p.role}', '${escapeAttr(p.team)}')">
                         <div class="name">${p.name}</div>
                         <div class="info">${p.team} • ${p.role}</div>
                     </div>
@@ -548,15 +551,119 @@
             });
         }
 
+        /**
+         * Pannello informativo del giocatore selezionato.
+         * Legge i dati dal listone e, se l'agente è caricato, la scheda
+         * tattica completa. Pensato per la lettura a colpo d'occhio
+         * durante l'asta: prima il tetto di prezzo, poi il resto.
+         */
+        function renderPlayerInfo(id, name, role, team) {
+            const box = document.getElementById('playerInfo');
+            if (!box) return;
+            box.style.display = 'block';
+
+            const p = (typeof PLAYERS_DATA !== 'undefined')
+                ? PLAYERS_DATA.find(x => x.id === id) : null;
+
+            if (!p) {
+                box.innerHTML = `
+                    <div style="color:#94a3b8;">Squadra: <span style="color:#60a5fa;">${escapeHtml(team || '')}</span></div>
+                    <div style="color:#94a3b8;margin-top:4px;">Ruolo: <span style="color:#60a5fa;">${escapeHtml(role || '')}</span></div>`;
+                return;
+            }
+
+            // Scheda tattica dall'agente (se disponibile)
+            let sch = null;
+            try {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.schedaCompleta) {
+                    sch = AI_AGENT.schedaCompleta(p, PLAYERS_DATA);
+                }
+            } catch (e) { sch = null; }
+
+            const tier = p.tierConsensus || p.tier || '—';
+            const tierCls = 'tier-' + String(tier).replace(/\+/g, 'plus').replace(/-/g, 'minus');
+            const pma = (p.pma != null) ? Math.round(p.pma * 10) / 10 : '—';
+            const tetto = sch && sch.prezzoMaxConsigliato != null ? sch.prezzoMaxConsigliato : null;
+            const tit = (p.expectedTitolarita != null) ? Math.round(p.expectedTitolarita) : null;
+
+            const verdColor = {
+                'PRIORITA MASSIMA': '#4ade80',
+                'OCCASIONE DA MODIFICATORE': '#38bdf8',
+                'EVITA': '#f87171'
+            };
+            const verd = sch && sch.verdetto ? sch.verdetto : (p.verdict || null);
+
+            let html = '';
+
+            // Riga 1: nome, tier, verdetto
+            html += `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                <span style="color:#60a5fa;font-weight:700;font-size:14px;">${escapeHtml(p.name)}</span>
+                <span class="${tierCls}" style="font-weight:700;font-size:11px;padding:2px 6px;border-radius:3px;">${tier}</span>
+                <span style="color:#94a3b8;font-size:11px;">${escapeHtml(p.team || '')} · ${p.role}</span>
+            </div>`;
+
+            // Riga 2: i due numeri che contano in asta
+            html += `<div style="display:flex;gap:8px;margin-bottom:8px;">
+                <div style="flex:1;background:#1e293b;padding:6px 8px;border-radius:4px;">
+                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;">Mercato</div>
+                    <div style="font-size:15px;color:#e2e8f0;font-weight:700;">${pma}</div>
+                </div>
+                <div style="flex:1;background:#1e293b;padding:6px 8px;border-radius:4px;${tetto != null ? 'border:1px solid #4ade8055;' : ''}">
+                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;">Non superare</div>
+                    <div style="font-size:15px;color:${tetto != null ? '#4ade80' : '#64748b'};font-weight:700;">${tetto != null ? tetto : '—'}</div>
+                </div>
+            </div>`;
+
+            // Riga 3: indicatori
+            const chip = (label, val, color) =>
+                `<span style="font-size:10px;color:#94a3b8;">${label} <b style="color:${color};">${val}</b></span>`;
+            const chips = [];
+            if (p.qualityScore != null) chips.push(chip('Qualità', Math.round(p.qualityScore), '#e2e8f0'));
+            if (p.valueScore != null) chips.push(chip('Convenienza', Math.round(p.valueScore),
+                p.valueScore >= 80 ? '#4ade80' : '#e2e8f0'));
+            if (tit != null) chips.push(chip('Titolarità', tit + '%',
+                tit >= 80 ? '#4ade80' : tit >= 60 ? '#fbbf24' : '#f87171'));
+            if (chips.length) {
+                html += `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;">${chips.join('')}</div>`;
+            }
+
+            if (verd) {
+                html += `<div style="font-size:11px;font-weight:700;color:${verdColor[verd] || '#cbd5e1'};margin-bottom:8px;">${escapeHtml(verd)}</div>`;
+            }
+
+            // Rigoristi e piazzati: valgono punti veri
+            if (sch && sch.piazzati && sch.piazzati.length) {
+                html += `<div style="font-size:10px;color:#fbbf24;margin-bottom:6px;">⚽ ${sch.piazzati.map(escapeHtml).join(', ')}</div>`;
+            }
+            if (sch && sch.rischi && sch.rischi.length) {
+                html += `<div style="font-size:10px;color:#f87171;margin-bottom:6px;">⚠️ ${sch.rischi.map(escapeHtml).join(', ')}</div>`;
+            }
+
+            // Compagni di reparto: solo i primi 3, gli altri sono rumore in asta
+            if (sch && sch.compagniDiReparto && sch.compagniDiReparto.length) {
+                const top = sch.compagniDiReparto.slice(0, 3);
+                html += `<div style="border-top:1px solid #334155;padding-top:6px;margin-top:6px;">
+                    <div style="font-size:9px;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Stesso ruolo, stessa squadra</div>`;
+                top.forEach(c => {
+                    html += `<div style="font-size:10px;color:#94a3b8;display:flex;justify-content:space-between;">
+                        <span>${escapeHtml(c.nome)} <span style="color:#64748b;">${c.tier}</span></span>
+                        <span>${c.titolarita}% · ${c.prezzoMercato}</span>
+                    </div>`;
+                });
+                if (sch.compagniDiReparto.length > 3) {
+                    html += `<div style="font-size:9px;color:#475569;margin-top:2px;">+${sch.compagniDiReparto.length - 3} altri</div>`;
+                }
+                html += `</div>`;
+            }
+
+            box.innerHTML = html;
+        }
+
         function selectPlayer(id, name, role, team) {
             selectedPlayer = { id, name, role, team };
             document.getElementById('playerSearch').value = name;
             document.getElementById('autocompleteList').classList.remove('active');
-            
-            // Mostra info giocatore
-            document.getElementById('playerInfo').style.display = 'block';
-            document.getElementById('infoSquad').textContent = squad;
-            document.getElementById('infoRole').textContent = role;
+            renderPlayerInfo(id, name, role, team);
         }
 
         // REGISTRA ACQUISTO
@@ -807,6 +914,44 @@
                     }
                 });
 
+                // PANNELLO NOTE AVVERSARI (non sulla propria squadra)
+                let noteHtml = '';
+                if (!isMyTeam) {
+                    const aperta = notePanelAperti.has(i);
+                    const nt = (typeof note === 'function') ? (note(i) || {}) : {};
+                    const attivi = nt.pattern || [];
+                    const testo = nt.testo || '';
+                    const nMarcati = attivi.length + (testo ? 1 : 0);
+
+                    let corpo = '';
+                    if (aperta) {
+                        const patterns = (typeof patternDisponibili === 'function')
+                            ? patternDisponibili() : [];
+                        corpo += '<div class="note-patterns">';
+                        patterns.forEach(pt => {
+                            const on = attivi.includes(pt.id);
+                            corpo += `<label class="note-check${on ? ' on' : ''}">
+                                <input type="checkbox" ${on ? 'checked' : ''}
+                                    onchange="toggleNotaPattern(${i}, '${pt.id}')">
+                                <span>${escapeHtml(pt.label)}</span>
+                            </label>`;
+                        });
+                        corpo += '</div>';
+                        corpo += `<textarea class="note-text" rows="2" maxlength="200"
+                            placeholder="Cosa noti al tavolo..."
+                            onchange="salvaNotaTesto(${i}, this.value)">${escapeHtml(testo)}</textarea>`;
+                    }
+
+                    noteHtml = `
+                        <div class="note-panel">
+                            <button class="note-toggle" onclick="toggleNotePanel(${i})">
+                                📝 Note${nMarcati ? ` <span class="note-badge">${nMarcati}</span>` : ''}
+                                <span style="float:right;">${aperta ? '▾' : '▸'}</span>
+                            </button>
+                            ${corpo}
+                        </div>`;
+                }
+
                 html += `
                     <div class="team-card ${isMyTeam ? 'my-team' : ''}">
                         <h4>${team.name}</h4>
@@ -826,6 +971,7 @@
                                 <div class="value">${team.players.length}/${PLAYERS_PER_SQUAD}</div>
                             </div>
                         </div>
+                        ${noteHtml}
                         <div class="team-players">
                             ${playersHtml || '<div style="color: #64748b; font-size: 12px;">Nessun giocatore ancora</div>'}
                         </div>
@@ -835,6 +981,126 @@
 
             grid.innerHTML = html;
         }
+
+        // ==========================================
+        // NOTE AVVERSARI (A8)
+        // Le crocette le legge l'agente e correggono i calcoli di pressione.
+        // Il testo libero non viene interpretato dal codice ma viaggia
+        // nel report, quindi arriva a chi lo legge.
+        // ==========================================
+        function toggleNotePanel(teamNum) {
+            if (notePanelAperti.has(teamNum)) notePanelAperti.delete(teamNum);
+            else notePanelAperti.add(teamNum);
+            renderTeamsOverview();
+        }
+
+        function toggleNotaPattern(teamNum, patternId) {
+            if (typeof nota !== 'function') return;
+            const corrente = (note(teamNum) || {}).pattern || [];
+            const nuovo = corrente.includes(patternId)
+                ? corrente.filter(x => x !== patternId)
+                : corrente.concat([patternId]);
+            nota(teamNum, nuovo);
+            renderTeamsOverview();
+        }
+
+        function salvaNotaTesto(teamNum, testo) {
+            if (typeof nota !== 'function') return;
+            const corrente = (note(teamNum) || {}).pattern || [];
+            nota(teamNum, corrente, (testo || '').trim() || null);
+            renderTeamsOverview();
+        }
+
+        window.toggleNotePanel = toggleNotePanel;
+        window.toggleNotaPattern = toggleNotaPattern;
+        window.salvaNotaTesto = salvaNotaTesto;
+
+        /** Sezione Utility collassabile: fuori dal flusso principale dell'asta. */
+        function toggleUtility() {
+            const body = document.getElementById('utilityBody');
+            const chev = document.getElementById('utilityChevron');
+            if (!body) return;
+            const aperto = body.style.display !== 'none';
+            body.style.display = aperto ? 'none' : 'flex';
+            if (chev) chev.textContent = aperto ? '▸' : '▾';
+        }
+        window.toggleUtility = toggleUtility;
+
+        // ==========================================
+        // TAB REPORT LIVE NELLA PANORAMICA (A7)
+        // Legge da localStorage: nessuna dipendenza da servizi esterni,
+        // che in asta è quello che conta.
+        // ==========================================
+        let overviewTab = 'squadre';
+
+        function switchOverviewTab(tab) {
+            overviewTab = tab;
+            const grid = document.getElementById('teamsGrid');
+            const pane = document.getElementById('reportPane');
+            const tS = document.getElementById('tabSquadre');
+            const tR = document.getElementById('tabReport');
+            if (!grid || !pane) return;
+
+            const squadre = tab === 'squadre';
+            grid.style.display = squadre ? '' : 'none';
+            pane.style.display = squadre ? 'none' : 'block';
+            if (tS) tS.classList.toggle('active', squadre);
+            if (tR) tR.classList.toggle('active', !squadre);
+            if (!squadre) renderReportPane();
+        }
+
+        function getReports() {
+            try { return JSON.parse(localStorage.getItem('astaReports') || '[]'); }
+            catch (e) { return []; }
+        }
+
+        function aggiornaBadgeReport() {
+            const b = document.getElementById('reportCount');
+            if (!b) return;
+            const n = getReports().length;
+            b.textContent = n;
+            b.style.display = n > 0 ? 'inline-block' : 'none';
+        }
+
+        function renderReportPane() {
+            const pane = document.getElementById('reportPane');
+            if (!pane) return;
+            const reports = getReports().slice().reverse(); // più recente in alto
+
+            if (!reports.length) {
+                pane.innerHTML = `<div style="padding:30px;text-align:center;color:#64748b;font-size:13px;">
+                    Nessun report ancora. Premi "Invia report" nel pannello Agente IA
+                    per registrare una fotografia dell'asta.</div>`;
+                return;
+            }
+
+            pane.innerHTML = reports.map((r, idx) => {
+                const t = new Date(r.timestamp);
+                const ora = isNaN(t) ? '' : t.toLocaleTimeString('it-IT');
+                const aperto = idx === 0; // il più recente già aperto
+                return `<div class="report-card">
+                    <button class="report-head" onclick="toggleReportCard(${r.id})">
+                        <span><b>#${r.id}</b> <span style="color:#64748b;">${ora}</span></span>
+                        <span id="repChev${r.id}">${aperto ? '▾' : '▸'}</span>
+                    </button>
+                    <pre class="report-body" id="repBody${r.id}"
+                         style="display:${aperto ? 'block' : 'none'};">${escapeHtml(r.report)}</pre>
+                </div>`;
+            }).join('');
+        }
+
+        function toggleReportCard(id) {
+            const b = document.getElementById('repBody' + id);
+            const c = document.getElementById('repChev' + id);
+            if (!b) return;
+            const aperto = b.style.display !== 'none';
+            b.style.display = aperto ? 'none' : 'block';
+            if (c) c.textContent = aperto ? '▸' : '▾';
+        }
+
+        window.switchOverviewTab = switchOverviewTab;
+        window.toggleReportCard = toggleReportCard;
+        window.renderReportPane = renderReportPane;
 
         function removeFromMySquad(playerId) {
             const myTeam = teams[1];
@@ -996,6 +1262,18 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             return text.replace(/[&<>"']/g, m => map[m]);
         }
 
+        /**
+         * Escape per stringhe dentro onclick="fn('...')".
+         * Serve per nomi come N'DICKA e N'DRI: senza questo l'apostrofo
+         * chiude la stringa JS e il click sulla riga non funziona.
+         */
+        function escapeAttr(text) {
+            return String(text == null ? '' : text)
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'")
+                .replace(/"/g, '&quot;');
+        }
+
         function clearAvailableSearch() {
             document.getElementById('availableSearch').value = '';
             document.getElementById('clearAvailableSearchBtn').style.display = 'none';
@@ -1072,10 +1350,24 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             });
 
             // Ordinamento
+            const TIER_RANK = { 'A+': 0, 'A': 1, 'A-': 2, 'A--': 3, 'B': 4, 'C': 5 };
+            const rank = p => {
+                const t = p.tierConsensus || p.tier;
+                const r = TIER_RANK[String(t).trim()];
+                return r === undefined ? 99 : r;
+            };
             if (activeSortOrder === 'name-asc') {
                 filtered.sort((a, b) => a.name.localeCompare(b.name));
             } else if (activeSortOrder === 'name-desc') {
                 filtered.sort((a, b) => b.name.localeCompare(a.name));
+            } else if (activeSortOrder === 'tier') {
+                // Tier migliore prima; a parità, il più caro (è il più forte del gruppo)
+                filtered.sort((a, b) =>
+                    rank(a) - rank(b) || (b.pma || 0) - (a.pma || 0));
+            } else if (activeSortOrder === 'value') {
+                // Massima convenienza prima; a parità, il tier migliore
+                filtered.sort((a, b) =>
+                    (b.valueScore || 0) - (a.valueScore || 0) || rank(a) - rank(b));
             }
 
             const list = document.getElementById('playersList');
@@ -1084,23 +1376,28 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 return;
             }
 
-            list.innerHTML = filtered.map(p => `
-                <div class="player-row" onclick="selectPlayerFromList(${p.id}, '${p.name}', '${p.role}', '${p.team}')" style="cursor: pointer;">
+            list.innerHTML = filtered.map(p => {
+                const t = p.tierConsensus || p.tier || '—';
+                const cls = 'tier-' + String(t).replace(/\+/g, 'plus').replace(/-/g, 'minus');
+                const pma = (p.pma !== undefined && p.pma !== null)
+                    ? Math.round(p.pma) : '—';
+                return `
+                <div class="player-row" onclick="selectPlayerFromList(${p.id}, '${escapeAttr(p.name)}', '${p.role}', '${escapeAttr(p.team)}')" style="cursor: pointer;">
                     <div class="name">${p.name}</div>
                     <div class="squad">${p.team}</div>
                     <div class="role">${p.role}</div>
-                    <div class="status">Disponibile</div>
+                    <div class="tier ${cls}">${t}</div>
+                    <div class="pma">${pma}</div>
                 </div>
-            `).join('');
+            `;
+            }).join('');
         }
 
         function selectPlayerFromList(id, name, role, team) {
             selectedPlayer = { id, name, role, team };
             document.getElementById('playerSearch').value = name;
-            document.getElementById('playerInfo').style.display = 'block';
-            document.getElementById('infoSquad').textContent = team;
-            document.getElementById('infoRole').textContent = role;
             document.getElementById('autocompleteList').classList.remove('active');
+            renderPlayerInfo(id, name, role, team);
         }
 
         // STORAGE
@@ -1214,21 +1511,20 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 receivedAt: new Date().toISOString()
             });
             localStorage.setItem('astaReports', JSON.stringify(reports));
-            
-            // Invia a Vercel (per tracking, anche se Vercel non persiste)
-            fetch('/api/reports', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ report, timestamp })
-            }).catch(err => console.log('Vercel call:', err));
-            
+
+            // Aggiorna il tab Report Live nella Panoramica
+            aggiornaBadgeReport();
+            if (overviewTab === 'report') renderReportPane();
+
             // Feedback all'utente
             const c = document.getElementById('chatHistory');
             c.innerHTML += `<div class="message assistant"><div class="content">
-                ✅ <strong>Report inviato!</strong> (#${reports.length}) — Apri la <a href="reports.html" target="_blank">dashboard</a> per vederlo in tempo reale.
+                ✅ <strong>Report #${reports.length} salvato.</strong>
+                Lo trovi nel tab <em>Report Live</em> della Panoramica Squadre,
+                pronto da copiare.
             </div></div>`;
             c.scrollTop = c.scrollHeight;
-            
+
             // Svuota il campo domanda
             document.getElementById('aiQuestion').value = '';
         }
@@ -1239,4 +1535,5 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 initializeTeamFilter();
                 filterAvailable();
             }
+            aggiornaBadgeReport();
         });
