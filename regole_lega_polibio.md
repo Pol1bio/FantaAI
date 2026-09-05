@@ -80,7 +80,11 @@ fantavoto 5,5.
 
 ### Sostituzioni
 
-Scattano quando un titolare non prende voto.
+- Scattano quando un titolare non prende voto
+- Sono **illimitate**
+- Entrano nell'ordine in cui la panchina è schierata
+- **Ruolo per ruolo**: se esce un difensore entra un difensore, non un
+  giocatore di ruolo diverso
 
 ---
 
@@ -180,8 +184,10 @@ Erano dubbi, ora risolti (risposte del 6 settembre 2026):
 6. **Formato campionato**: **scontri diretti** fra squadre.
 7. **Sostituzioni**: scattano quando un titolare non prende voto.
 
-Resta aperto: quante sostituzioni scattano al massimo e con quale ordine
-di priorità fra i panchinari.
+8. **Sostituzioni**: illimitate, nell'ordine di schieramento della panchina,
+   e sempre ruolo per ruolo.
+
+Nessun punto rimasto aperto.
 
 ---
 
@@ -202,7 +208,13 @@ separate perché possano essere discusse o smentite.*
 - In attacco il rendimento cala in modo regolare: circa +0,24 di fantamedia
   per ogni raddoppio di prezzo.
 - Poiché servono 4 difensori in campo perché il modificatore si applichi,
-  la **titolarità** dei difensori conta più della loro qualità.
+  la **titolarità conta più della qualità — ma solo per i 4 titolari**.
+  Le sostituzioni illimitate e ruolo per ruolo assorbono quasi tutto il
+  rischio: con 4 difensori in panchina, anche da 1 credito e riserve nei
+  loro club, le giornate senza modificatore scendono dal 17,9% al 9,5%,
+  e quel residuo dipende ormai dal portiere. Fra una panchina di riserve
+  e una di titolari ballano 1,4 punti stagione per 1,4 crediti: irrilevante.
+  **Sui panchinari difensivi si può spendere il minimo assoluto.**
 
 ### Effetti degli scontri diretti
 
