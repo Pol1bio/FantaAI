@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.8 - APP LOGIC
+        // FANTACALCIO v3.9.9 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1025,6 +1025,7 @@
             if (chev) chev.textContent = aperto ? '▸' : '▾';
         }
         window.toggleUtility = toggleUtility;
+        window.setSortMode = setSortMode;
 
         // ==========================================
         // TAB REPORT LIVE NELLA PANORAMICA (A7)
@@ -1283,6 +1284,54 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
         // VARIABILI FILTRI
         let activeRoles = new Set();
         let activeSortOrder = 'name-asc';
+        let alphaDirAsc = true;  // per il toggle alfabetico: true = A-Z, false = Z-A
+
+        /**
+         * Nuovo sistema di ordinamento con toggle esclusivi.
+         * - setSortMode(mode): attiva un modalità (alpha, tier, value)
+         * - toggleAlphaDir(): quando alpha è attivo, clicca il freccia per invertire
+         * Gli toggle sono mutuamente esclusivi; uno solo può essere attivo.
+         */
+        function setSortMode(mode) {
+            const wasActive = activeSortOrder.startsWith(mode);
+            const buttons = document.querySelectorAll('.sort-toggle');
+            
+            // Disattiva tutti
+            buttons.forEach(b => b.classList.remove('active'));
+            
+            if (mode === 'alpha') {
+                if (wasActive && alphaDirAsc) {
+                    // era attivo in A-Z, inverti a Z-A
+                    alphaDirAsc = false;
+                    activeSortOrder = 'name-desc';
+                } else if (wasActive && !alphaDirAsc) {
+                    // era attivo in Z-A, torna a A-Z
+                    alphaDirAsc = true;
+                    activeSortOrder = 'name-asc';
+                } else {
+                    // non era attivo, attiva in A-Z
+                    alphaDirAsc = true;
+                    activeSortOrder = 'name-asc';
+                }
+                document.getElementById('sortAlpha').classList.add('active');
+                document.getElementById('alphaDir').textContent = alphaDirAsc ? '↑' : '↓';
+            } else if (mode === 'tier') {
+                activeSortOrder = 'tier';
+                document.getElementById('sortTier').classList.add('active');
+            } else if (mode === 'value') {
+                activeSortOrder = 'value';
+                document.getElementById('sortValue').classList.add('active');
+            }
+            
+            filterAvailable();
+        }
+
+        // Inizializza lo stato al caricamento
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => {
+                document.getElementById('sortAlpha')?.classList.add('active');
+            }, 50);
+        });
 
         function toggleRoleFilter(role, button) {
             if (activeRoles.has(role)) {
@@ -1292,15 +1341,6 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 activeRoles.add(role);
                 button.classList.add('active');
             }
-            filterAvailable();
-        }
-
-        function toggleSortOrder(order, button) {
-            // Rimuovi active da tutti i bottoncini sort
-            document.querySelectorAll('.sort-btn').forEach(b => b.classList.remove('active'));
-            // Aggiungi active al bottone cliccato
-            button.classList.add('active');
-            activeSortOrder = order;
             filterAvailable();
         }
 
