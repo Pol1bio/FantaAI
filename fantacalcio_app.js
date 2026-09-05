@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9 - APP LOGIC
+        // FANTACALCIO v3.9.9b - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1285,42 +1285,82 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
         let activeRoles = new Set();
         let activeSortOrder = 'name-asc';
         let alphaDirAsc = true;  // per il toggle alfabetico: true = A-Z, false = Z-A
+        let alphaEnabled = true; // ALFABETICO è attivo per default
 
         /**
-         * Nuovo sistema di ordinamento con toggle esclusivi.
-         * - setSortMode(mode): attiva un modalità (alpha, tier, value)
-         * - toggleAlphaDir(): quando alpha è attivo, clicca il freccia per invertire
-         * Gli toggle sono mutuamente esclusivi; uno solo può essere attivo.
+         * Nuovo sistema di ordinamento ibrido:
+         * - ALFABETICO: toggle on/off, indipendente
+         * - TIER e VALORE: esclusivi tra loro
+         * 
+         * Combinazioni possibili:
+         * - ALFABETICO solo (default)
+         * - ALFABETICO + TIER
+         * - ALFABETICO + VALORE
+         * - TIER solo
+         * - VALORE solo
          */
         function setSortMode(mode) {
-            const wasActive = activeSortOrder.startsWith(mode);
             const buttons = document.querySelectorAll('.sort-toggle');
             
-            // Disattiva tutti
-            buttons.forEach(b => b.classList.remove('active'));
-            
             if (mode === 'alpha') {
-                if (wasActive && alphaDirAsc) {
-                    // era attivo in A-Z, inverti a Z-A
-                    alphaDirAsc = false;
-                    activeSortOrder = 'name-desc';
-                } else if (wasActive && !alphaDirAsc) {
-                    // era attivo in Z-A, torna a A-Z
-                    alphaDirAsc = true;
-                    activeSortOrder = 'name-asc';
+                const alphaBtn = document.getElementById('sortAlpha');
+                const wasActive = alphaBtn.classList.contains('active');
+                
+                if (wasActive) {
+                    // Se era già attivo, inverti la direzione (A-Z ↔ Z-A)
+                    alphaDirAsc = !alphaDirAsc;
+                    document.getElementById('alphaDir').textContent = alphaDirAsc ? '↑' : '↓';
                 } else {
-                    // non era attivo, attiva in A-Z
+                    // Se non era attivo, attivalo in A-Z
+                    alphaEnabled = true;
                     alphaDirAsc = true;
-                    activeSortOrder = 'name-asc';
+                    alphaBtn.classList.add('active');
+                    document.getElementById('alphaDir').textContent = '↑';
                 }
-                document.getElementById('sortAlpha').classList.add('active');
-                document.getElementById('alphaDir').textContent = alphaDirAsc ? '↑' : '↓';
+                updateActiveSortOrder();
             } else if (mode === 'tier') {
-                activeSortOrder = 'tier';
-                document.getElementById('sortTier').classList.add('active');
+                // TIER e VALORE sono esclusivi
+                const isTierActive = document.getElementById('sortTier').classList.contains('active');
+                
+                if (isTierActive) {
+                    // Se era già attivo, disattiva
+                    document.getElementById('sortTier').classList.remove('active');
+                } else {
+                    // Attiva TIER e disattiva VALORE
+                    document.getElementById('sortTier').classList.add('active');
+                    document.getElementById('sortValue').classList.remove('active');
+                }
+                updateActiveSortOrder();
             } else if (mode === 'value') {
+                // TIER e VALORE sono esclusivi
+                const isValueActive = document.getElementById('sortValue').classList.contains('active');
+                
+                if (isValueActive) {
+                    // Se era già attivo, disattiva
+                    document.getElementById('sortValue').classList.remove('active');
+                } else {
+                    // Attiva VALORE e disattiva TIER
+                    document.getElementById('sortValue').classList.add('active');
+                    document.getElementById('sortTier').classList.remove('active');
+                }
+                updateActiveSortOrder();
+            }
+        }
+
+        /**
+         * Calcola l'ordinamento effettivo in base ai toggle attivi.
+         */
+        function updateActiveSortOrder() {
+            const tierActive = document.getElementById('sortTier').classList.contains('active');
+            const valueActive = document.getElementById('sortValue').classList.contains('active');
+            
+            if (tierActive) {
+                activeSortOrder = 'tier';
+            } else if (valueActive) {
                 activeSortOrder = 'value';
-                document.getElementById('sortValue').classList.add('active');
+            } else {
+                // Default: alfabetico
+                activeSortOrder = alphaDirAsc ? 'name-asc' : 'name-desc';
             }
             
             filterAvailable();
@@ -1330,6 +1370,7 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
         document.addEventListener('DOMContentLoaded', () => {
             setTimeout(() => {
                 document.getElementById('sortAlpha')?.classList.add('active');
+                document.getElementById('alphaDir').textContent = '↑';
             }, 50);
         });
 
