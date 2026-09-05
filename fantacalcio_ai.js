@@ -9,6 +9,19 @@
 (function () {
   'use strict';
 
+  // Comportamenti osservabili al tavolo. Sono ipotesi di partenza: vanno
+  // corretti dopo la prima asta vera, quando si sa cosa si riconosce davvero.
+  // "peso" corregge la pressione attesa da quell'avversario:
+  //  > 1 rilancia piu' del previsto, < 1 meno, ~0 di fatto non compete.
+  const PATTERN_AVVERSARI = {
+    strapaga_top:    { label: 'Strapaga i top',                     peso: 1.4 },
+    solo_minimo:     { label: 'Compra solo a 1-2 crediti',          peso: 0.1 },
+    rilancia_sempre: { label: 'Rilancia sempre, anche per dispetto', peso: 1.3 },
+    molla_subito:    { label: 'Molla appena sale il prezzo',        peso: 0.4 },
+    accumula:        { label: 'Accumula per un reparto successivo', peso: 0.3 },
+    tagliato_fuori:  { label: 'Ha gia\' speso troppo',              peso: 0.2 }
+  };
+
   const ROLES = ['POR', 'DIF', 'CEN', 'ATT'];
 
   // Ordine di qualita' decrescente. Serve per contare quanti giocatori
@@ -444,40 +457,69 @@
 
     // ------------------------------------------------------------ avversari
 
+    /**
+     * Deduce la strategia di un avversario.
+     * In asta a reparti le quote di spesa per ruolo sono imposte dal formato
+     * (durante la fase POR tutti hanno speso il 100% in portieri), quindi
+     * confrontarle con le strategie non dice nulla. Il segnale vero e' quanta
+     * parte del BUDGET TOTALE ha impegnato nei reparti gia' chiusi.
+     */
     inferOpponentStrategy(team, key) {
       const players = (team && team.players) || [];
       const nome = (team && team.name) || ('Squadra ' + (key !== undefined ? key : '?'));
       if (!players.length) {
         return { squadra: nome, strategy: 'NESSUN ACQUISTO', confidence: 0,
-                 acquisti: 0, spesaPerRuolo: {} };
+                 acquisti: 0, repartiChiusi: [], quotePerRuolo: {}, residuo: this.budgetTotal };
       }
-      const st = this.rosterState(team);
-      const tot = st.spent || 1;
-      const quote = {};
-      ROLES.forEach((r) => { quote[r] = (st.spentByRole[r] / tot) * 100; });
 
-      let best = null, bestDist = Infinity;
-      Object.keys(this.strategies).forEach((k) => {
-        const s = this.strategies[k];
-        const dist = ROLES.reduce((d, r) => d + Math.abs(quote[r] - s[r] * 100), 0);
-        if (dist < bestDist) { bestDist = dist; best = s; }
+      const st = this.rosterState(team);
+      const quote = {};
+      ROLES.forEach((r) => {
+        quote[r] = round1((st.spentByRole[r] / this.budgetTotal) * 100);
       });
 
-      // Con pochi acquisti la deduzione non vale nulla: dichiaralo invece
-      // di dare un numero che sembra preciso.
-      const copertura = Math.min(1, players.length / 12);
-      const confidence = Math.round(Math.max(0, 100 - bestDist) * copertura);
+      // Solo i reparti gia' completati sono confrontabili: sugli altri
+      // la spesa e' ancora in corso e il dato e' parziale per costruzione.
+      const chiusi = ROLES.filter((r) => st.countByRole[r] >= this.roleLimits[r]);
+
+      if (!chiusi.length) {
+        return {
+          squadra: nome, strategy: 'TROPPO PRESTO PER DIRLO', confidence: 0,
+          acquisti: players.length, residuo: st.residuo,
+          repartiChiusi: [], quotePerRuolo: quote,
+          nota: 'Nessun reparto ancora completato da questa squadra.'
+        };
+      }
+
+      let best = null, bestDist = Infinity, secondDist = Infinity;
+      Object.keys(this.strategies).forEach((k) => {
+        const cfg = this.strategies[k];
+        const dist = chiusi.reduce(
+          (d, r) => d + Math.abs(quote[r] - cfg[r] * 100), 0);
+        if (dist < bestDist) { secondDist = bestDist; bestDist = dist; best = cfg; }
+        else if (dist < secondDist) { secondDist = dist; }
+      });
+
+      // La confidenza cresce con i reparti chiusi e con quanto la strategia
+      // vincente stacca la seconda: se due strategie spiegano i dati
+      // altrettanto bene, la deduzione vale poco.
+      const copertura = chiusi.length / ROLES.length;
+      const aderenza = Math.max(0, 1 - bestDist / 20);
+      const distacco = (isFinite(secondDist) && secondDist > 0)
+        ? Math.min(1, (secondDist - bestDist) / secondDist) : 0.5;
+      const confidence = Math.round(100 * copertura * aderenza * (0.5 + 0.5 * distacco));
 
       return {
         squadra: nome,
-        strategy: confidence < 25 ? 'TROPPO PRESTO PER DIRLO' : best.name,
+        strategy: confidence < 50 ? 'INDIZI DEBOLI' : best.name,
+        ipotesi: best.name,
         confidence: confidence,
         acquisti: players.length,
         residuo: st.residuo,
-        spesaPerRuolo: {
-          POR: round1(quote.POR), DIF: round1(quote.DIF),
-          CEN: round1(quote.CEN), ATT: round1(quote.ATT)
-        }
+        repartiChiusi: chiusi,
+        quotePerRuolo: quote,
+        dettaglio: chiusi.map((r) =>
+          r + ' ' + quote[r] + '% (attesi ' + round1(best[r] * 100) + '%)').join(', ')
       };
     }
 
@@ -568,6 +610,32 @@
                testo: 'Budget e ruoli in linea con la strategia.' };
     }
 
+    /**
+     * Traduce le crocette osservate al tavolo in un fattore di pressione.
+     * Serve a distinguere gli avversari che rilanciano davvero da quelli
+     * che sono affamati solo sulla carta.
+     */
+    pesoAvversario(nota) {
+      const pattern = (nota && nota.pattern) || [];
+      if (!pattern.length) return 1;
+      // Il comportamento piu' estremo domina: chi compra solo al minimo
+      // non torna competitivo perche' ogni tanto rilancia.
+      let peso = 1;
+      pattern.forEach((p) => {
+        const def = PATTERN_AVVERSARI[p];
+        if (!def) return;
+        if (Math.abs(def.peso - 1) > Math.abs(peso - 1)) peso = def.peso;
+      });
+      return peso;
+    }
+
+    /** Etichette leggibili dei pattern marcati su una squadra. */
+    etichettePattern(nota) {
+      return ((nota && nota.pattern) || [])
+        .map((p) => PATTERN_AVVERSARI[p] && PATTERN_AVVERSARI[p].label)
+        .filter(Boolean);
+    }
+
     // ------------------------------------------------- asta per reparto
 
     /**
@@ -616,11 +684,12 @@
      * ancora comprare in questa fase, e quanti giocatori restano per fascia.
      * Con questi due numeri si decide se un nome va chiamato subito o atteso.
      */
-    scarsitaFase(allTeams, allPlayers, faseOverride) {
+    scarsitaFase(allTeams, allPlayers, faseOverride, note) {
       const info = this.faseCorrente(allTeams);
       const fase = faseOverride || info.fase;
       if (!fase) return { fase: null, completa: true };
 
+      const N = note || {};
       const limite = this.roleLimits[fase];
       const affamate = [];
       Object.keys(allTeams || {}).forEach((k) => {
@@ -628,6 +697,7 @@
         const st = this.rosterState(t);
         const mancanti = Math.max(0, limite - st.countByRole[fase]);
         if (mancanti > 0) {
+          const nt = N[k] || N[String(k)];
           affamate.push({
             squadra: (t && t.name) || ('Squadra ' + k),
             chiave: k,
@@ -635,11 +705,18 @@
             residuo: st.residuo,
             // Quanto puo' davvero offrire ORA: i crediti che gli restano
             // meno 1 per ogni altro slot che dovra' comunque riempire.
-            maxOfferta: st.maxOffertaOra
+            maxOfferta: st.maxOffertaOra,
+            peso: this.pesoAvversario(nt),
+            osservazioni: this.etichettePattern(nt),
+            nota: (nt && nt.testo) || null
           });
         }
       });
       affamate.sort((a, b) => b.maxOfferta - a.maxOfferta);
+
+      // Quante squadre rilanceranno DAVVERO, non solo sulla carta.
+      const competitive = affamate.filter((a) => a.peso >= 0.5);
+      const pressioneReale = round1(affamate.reduce((s, a) => s + a.peso, 0));
 
       const liberi = this.availablePlayers(allPlayers, allTeams)
         .filter((p) => normRole(p.role || p.roleShort) === fase);
@@ -666,13 +743,20 @@
         slotResidui: info.slotResidui,
         squadreAffamate: affamate,
         numeroSquadreAffamate: affamate.length,
+        // Con le note compilate questo e' il numero che conta: quante
+        // rilanciano sul serio. Senza note coincide con le affamate.
+        squadreCompetitive: competitive.length,
+        pressioneReale: pressioneReale,
+        noteCompilate: affamate.some((a) => a.osservazioni.length || a.nota),
         domandaTotale: domandaTotale,
         offertaTotale: liberi.length,
         rapportoDomandaOfferta: liberi.length > 0
           ? round1(domandaTotale / liberi.length) : null,
         liberiPerFascia: perFascia,
         liberiAlmenoFascia: cumulativi,
-        rilancioMassimoRealistico: affamate.length ? affamate[0].maxOfferta : 0,
+        rilancioMassimoRealistico: competitive.length
+          ? competitive[0].maxOfferta
+          : (affamate.length ? affamate[0].maxOfferta : 0),
         tensioneFasciaAlta: affamate.length > 0 && fasciaAlta < affamate.length,
         nota: affamate.length === 0
           ? 'Nessuna squadra deve ancora comprare in questo reparto.'
@@ -746,10 +830,10 @@
      * lucidita'. Se invece l'offerta abbonda, conviene lasciarlo chiamare
      * ad altri e rilanciare in coda con piu' informazioni.
      */
-    chiamaOraOAspetta(player, allTeams, allPlayers) {
+    chiamaOraOAspetta(player, allTeams, allPlayers, note) {
       if (!player) return { errore: 'giocatore non trovato' };
       const ruolo = normRole(player.role || player.roleShort);
-      const sc = this.scarsitaFase(allTeams, allPlayers, ruolo);
+      const sc = this.scarsitaFase(allTeams, allPlayers, ruolo, note);
       const info = this.faseCorrente(allTeams);
 
       if (info.fase && ruolo !== info.fase) {
@@ -780,7 +864,13 @@
 
       const tier = player.tierConsensus || player.tier;
       const almeno = sc.liberiAlmenoFascia ? sc.liberiAlmenoFascia[tier] : null;
-      const affamate = sc.numeroSquadreAffamate || 0;
+      // Se hai osservato il tavolo, conta chi rilancia davvero.
+      const suCarta = sc.numeroSquadreAffamate || 0;
+      const affamate = sc.noteCompilate ? (sc.squadreCompetitive || 0) : suCarta;
+      const chiarimento = (sc.noteCompilate && affamate !== suCarta)
+        ? ' (' + suCarta + ' affamate sulla carta, ' + affamate +
+          ' che rilanciano davvero secondo le tue note)'
+        : '';
 
       let verdetto, motivo;
       if (almeno === null || affamate === 0) {
@@ -790,21 +880,23 @@
         verdetto = 'CHIAMALO TU ORA';
         const esclusi = affamate - almeno;
         motivo = 'Restano ' + almeno + ' giocatori di livello ' + tier +
-          ' o superiore per ' + affamate + ' squadre ancora affamate: ' +
+          ' o superiore per ' + affamate + ' squadre ancora affamate' +
+          chiarimento + ': ' +
           (esclusi === 1 ? 'una restera\'' : esclusi + ' resteranno') +
           ' a bocca asciutta. Se lo vuoi, chiamalo tu adesso; ' +
           'altrimenti mettilo in conto perso.';
       } else if (almeno === affamate) {
         verdetto = 'MARGINE ZERO';
         motivo = 'Ci sono esattamente ' + almeno + ' giocatori di livello ' +
-          tier + ' o superiore per ' + affamate + ' squadre affamate: basta ' +
-          'che una squadra ne prenda due e qualcuno resta fuori. Puoi ' +
-          'aspettare un giro, non di piu\'.';
+          tier + ' o superiore per ' + affamate + ' squadre affamate' +
+          chiarimento + ': basta che una squadra ne prenda due e qualcuno ' +
+          'resta fuori. Puoi aspettare un giro, non di piu\'.';
       } else {
         verdetto = 'PUOI ASPETTARE';
         motivo = 'Ci sono ' + almeno + ' giocatori di livello ' + tier +
-          ' o superiore per sole ' + affamate + ' squadre affamate: lascialo ' +
-          'chiamare ad altri e inserisciti in coda, il prezzo restera\' basso.';
+          ' o superiore per sole ' + affamate + ' squadre affamate' +
+          chiarimento + ': lascialo chiamare ad altri e inserisciti in coda, ' +
+          'il prezzo restera\' basso.';
       }
 
       return {
@@ -820,7 +912,7 @@
       };
     }
 
-    generateFullReport(team, strategyKey, allTeams, allPlayers, myTeamNum) {
+    generateFullReport(team, strategyKey, allTeams, allPlayers, myTeamNum, note) {
       const availables = this.availablePlayers(allPlayers, allTeams);
       const st = this.rosterState(team);
       const mine = myTeamNum || 1;
@@ -837,7 +929,7 @@
         timestamp: new Date().toISOString(),
         stato: st,
         fase: infoFase,
-        scarsita: this.scarsitaFase(allTeams, allPlayers),
+        scarsita: this.scarsitaFase(allTeams, allPlayers, null, note),
         budgetFase: this.budgetFase(team, strategyKey, allTeams),
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
@@ -867,10 +959,28 @@
   const myTeamNum = () =>
     (typeof window !== 'undefined' && window.myTeamNum) || 1;
 
+  // Note sugli avversari: crocette + testo libero, scritte dall'app.
+  // Vivono in localStorage cosi' sopravvivono a un refresh in piena asta.
+  const getNote = () => {
+    if (typeof window !== 'undefined' && window.noteAvversari) {
+      return window.noteAvversari;
+    }
+    try {
+      const raw = localStorage.getItem('noteAvversari');
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) { return {}; }
+  };
+
+  const salvaNote = (n) => {
+    if (typeof window !== 'undefined') window.noteAvversari = n;
+    try { localStorage.setItem('noteAvversari', JSON.stringify(n)); }
+    catch (e) { /* localStorage non disponibile: resta in memoria */ }
+  };
+
   function getAIContext() {
     const t = getTeams();
     return AI_AGENT.generateFullReport(
-      t[myTeamNum()], currentStrategy(), t, getPlayers(), myTeamNum());
+      t[myTeamNum()], currentStrategy(), t, getPlayers(), myTeamNum(), getNote());
   }
 
   /** "Quanto offro per Buongiorno?" — risposta diretta. */
@@ -881,11 +991,47 @@
     return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy());
   }
 
+  /** Segna un comportamento osservato su una squadra avversaria. */
+  function nota(squadra, pattern, testo) {
+    const n = getNote();
+    const k = String(squadra);
+    const prec = n[k] || {};
+    n[k] = {
+      pattern: pattern === undefined ? (prec.pattern || [])
+             : (Array.isArray(pattern) ? pattern : [pattern]),
+      testo: testo === undefined ? (prec.testo || null) : testo
+    };
+    salvaNote(n);
+    return n[k];
+  }
+
+  /** Tutte le note, o quelle di una squadra. */
+  function note(squadra) {
+    const n = getNote();
+    return squadra === undefined ? n : (n[String(squadra)] || null);
+  }
+
+  /** Cancella le note di una squadra, o tutte. */
+  function azzeraNote(squadra) {
+    if (squadra === undefined) { salvaNote({}); return {}; }
+    const n = getNote();
+    delete n[String(squadra)];
+    salvaNote(n);
+    return n;
+  }
+
+  /** Elenco dei pattern disponibili: l'app ci costruisce le crocette. */
+  function patternDisponibili() {
+    return Object.keys(PATTERN_AVVERSARI).map((k) => ({
+      id: k, label: PATTERN_AVVERSARI[k].label, peso: PATTERN_AVVERSARI[k].peso
+    }));
+  }
+
   /** Chiamare adesso o aspettare? Decisione tattica sul singolo nome. */
   function chiamaOAspetta(nome) {
     const p = AI_AGENT.findPlayer(getPlayers(), nome);
     if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
-    return AI_AGENT.chiamaOraOAspetta(p, getTeams(), getPlayers());
+    return AI_AGENT.chiamaOraOAspetta(p, getTeams(), getPlayers(), getNote());
   }
 
   /** Stato della fase di reparto in corso. */
@@ -895,7 +1041,7 @@
 
   /** Scarsita' del reparto in corso: chi e' ancora affamato, cosa resta. */
   function scarsita(ruolo) {
-    return AI_AGENT.scarsitaFase(getTeams(), getPlayers(), normRole(ruolo) || null);
+    return AI_AGENT.scarsitaFase(getTeams(), getPlayers(), normRole(ruolo) || null, getNote());
   }
 
   /** Scheda completa di un giocatore. */
@@ -1004,11 +1150,39 @@
 
     L.push('');
     L.push('AVVERSARI');
-    L.push('- Rilancio massimo possibile da un avversario: ' +
-           r.mercato.rilancioMassimoAvversario);
-    r.avversari.forEach((o) =>
-      L.push('- ' + o.squadra + ': ' + o.strategy + ' (confidenza ' + o.confidence +
-             '%, ' + o.acquisti + ' acquisti)'));
+    r.avversari.forEach((o) => {
+      if (o.strategy === 'NESSUN ACQUISTO') {
+        L.push('- ' + o.squadra + ': nessun acquisto');
+        return;
+      }
+      let riga = '- ' + o.squadra + ': ';
+      if (o.repartiChiusi && o.repartiChiusi.length) {
+        riga += o.dettaglio;
+        riga += o.confidence >= 50
+          ? ' → ' + o.ipotesi + ' (confidenza ' + o.confidence + '%)'
+          : ' → indizi ancora deboli';
+      } else {
+        riga += o.acquisti + ' acquisti, nessun reparto chiuso';
+      }
+      riga += ' | residuo ' + o.residuo;
+      L.push(riga);
+    });
+
+    const scN = r.scarsita || {};
+    if (scN.noteCompilate) {
+      L.push('');
+      L.push('OSSERVAZIONI AL TAVOLO (annotate da me durante l\'asta)');
+      (scN.squadreAffamate || []).forEach((a) => {
+        if (!a.osservazioni.length && !a.nota) return;
+        const parti = [];
+        if (a.osservazioni.length) parti.push(a.osservazioni.join('; '));
+        if (a.nota) parti.push('"' + a.nota + '"');
+        L.push('- ' + a.squadra + ': ' + parti.join(' — '));
+      });
+      L.push('(pressione reale: ' + scN.squadreCompetitive +
+             ' squadre rilanciano davvero su ' + scN.numeroSquadreAffamate +
+             ' affamate)');
+    }
 
     L.push('');
     L.push('CONSIGLIO: ' + r.consiglio.icon + ' ' + r.consiglio.titolo + ' — ' +
@@ -1028,6 +1202,10 @@
     chiamaOAspetta: chiamaOAspetta,
     faseAsta: faseAsta,
     scarsita: scarsita,
+    nota: nota,
+    note: note,
+    azzeraNote: azzeraNote,
+    patternDisponibili: patternDisponibili,
     normRole: normRole,
     nameKey: nameKey
   };
