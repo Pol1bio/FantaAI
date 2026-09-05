@@ -11,6 +11,14 @@
 
   const ROLES = ['POR', 'DIF', 'CEN', 'ATT'];
 
+  // Ordine di qualita' decrescente. Serve per contare quanti giocatori
+  // "di livello almeno X" restano liberi in una fase.
+  const TIER_ORDER = ['A+', 'A', 'A-', 'A--', 'B', 'C'];
+  const tierRank = (t) => {
+    const i = TIER_ORDER.indexOf(String(t || '').trim());
+    return i === -1 ? TIER_ORDER.length : i;
+  };
+
   const ROLE_ALIAS = {
     P: 'POR', D: 'DIF', C: 'CEN', A: 'ATT',
     POR: 'POR', DIF: 'DIF', CEN: 'CEN', ATT: 'ATT',
@@ -313,9 +321,31 @@
       };
     }
 
+    /**
+     * Altri giocatori dello stesso ruolo nella stessa squadra (es. titolare/vice).
+     * Utile per portieri e attaccanti: la forza del singolo dipende anche
+     * da chi gli sta dietro e da quanto tiene la squadra nel suo complesso.
+     */
+    compagniDiReparto(player, allPlayers) {
+      if (!player || !allPlayers) return [];
+      return allPlayers
+        .filter((p) => p.team === player.team &&
+                       p.role === player.role &&
+                       p.id !== player.id)
+        .sort((a, b) => (b.expectedTitolarita || 0) - (a.expectedTitolarita || 0))
+        .map((p) => ({
+          nome: p.name,
+          tier: p.tierConsensus || p.tier,
+          titolarita: p.expectedTitolarita,
+          verdetto: p.verdict,
+          prezzoMercato: p.pma
+        }));
+    }
+
     /** Scheda completa: quando stai decidendo se rilanciare. */
-    schedaCompleta(player) {
+    schedaCompleta(player, allPlayers) {
       const c = this.playerCard(player);
+      c.compagniDiReparto = this.compagniDiReparto(player, allPlayers);
       c.dettaglio = {
         fasciaFantaculo: player.fasciaFc,
         tierLaudantes: player.tierLaudantes,
@@ -520,6 +550,258 @@
                testo: 'Budget e ruoli in linea con la strategia.' };
     }
 
+    // ------------------------------------------------- asta per reparto
+
+    /**
+     * L'asta e' sequenziale per ruolo: si passa al reparto successivo solo
+     * quando TUTTE le squadre hanno completato quello corrente.
+     * Restituisce la fase in corso e quanto manca a chiuderla.
+     */
+    faseCorrente(allTeams) {
+      const keys = Object.keys(allTeams || {});
+      if (!keys.length) {
+        return { fase: 'POR', completa: false, slotTotali: 0, slotRiempiti: 0,
+                 slotResidui: 0, percentuale: 0, faseSuccessiva: 'DIF',
+                 prontaAlCambio: false };
+      }
+
+      for (let i = 0; i < ROLES.length; i++) {
+        const role = ROLES[i];
+        const limite = this.roleLimits[role];
+        let riempiti = 0;
+        keys.forEach((k) => {
+          const st = this.rosterState(allTeams[k]);
+          riempiti += Math.min(limite, st.countByRole[role]);
+        });
+        const totali = limite * keys.length;
+        if (riempiti < totali) {
+          return {
+            fase: role,
+            completa: false,
+            slotTotali: totali,
+            slotRiempiti: riempiti,
+            slotResidui: totali - riempiti,
+            percentuale: Math.round((riempiti / totali) * 100),
+            faseSuccessiva: ROLES[i + 1] || null,
+            prontaAlCambio: false
+          };
+        }
+      }
+
+      return { fase: null, completa: true, slotTotali: 0, slotRiempiti: 0,
+               slotResidui: 0, percentuale: 100, faseSuccessiva: null,
+               prontaAlCambio: true, messaggio: 'Tutte le rose sono complete.' };
+    }
+
+    /**
+     * Il cuore della strategia in asta a reparti: quante squadre devono
+     * ancora comprare in questa fase, e quanti giocatori restano per fascia.
+     * Con questi due numeri si decide se un nome va chiamato subito o atteso.
+     */
+    scarsitaFase(allTeams, allPlayers, faseOverride) {
+      const info = this.faseCorrente(allTeams);
+      const fase = faseOverride || info.fase;
+      if (!fase) return { fase: null, completa: true };
+
+      const limite = this.roleLimits[fase];
+      const affamate = [];
+      Object.keys(allTeams || {}).forEach((k) => {
+        const t = allTeams[k];
+        const st = this.rosterState(t);
+        const mancanti = Math.max(0, limite - st.countByRole[fase]);
+        if (mancanti > 0) {
+          affamate.push({
+            squadra: (t && t.name) || ('Squadra ' + k),
+            chiave: k,
+            mancanti: mancanti,
+            residuo: st.residuo,
+            // Quanto puo' davvero offrire ORA: i crediti che gli restano
+            // meno 1 per ogni altro slot che dovra' comunque riempire.
+            maxOfferta: st.maxOffertaOra
+          });
+        }
+      });
+      affamate.sort((a, b) => b.maxOfferta - a.maxOfferta);
+
+      const liberi = this.availablePlayers(allPlayers, allTeams)
+        .filter((p) => normRole(p.role || p.roleShort) === fase);
+
+      const perFascia = {};
+      TIER_ORDER.forEach((t) => { perFascia[t] = 0; });
+      liberi.forEach((p) => {
+        const t = p.tierConsensus || p.tier;
+        if (perFascia[t] !== undefined) perFascia[t] += 1;
+      });
+
+      // Quanti restano "di livello almeno X": e' il numero che conta,
+      // perche' chi cerca un A+ ripiega volentieri su un A.
+      const cumulativi = {};
+      let acc = 0;
+      TIER_ORDER.forEach((t) => { acc += perFascia[t]; cumulativi[t] = acc; });
+
+      const domandaTotale = affamate.reduce((s, a) => s + a.mancanti, 0);
+      const fasciaAlta = perFascia['A+'] + perFascia['A'];
+
+      return {
+        fase: fase,
+        completamento: info.percentuale,
+        slotResidui: info.slotResidui,
+        squadreAffamate: affamate,
+        numeroSquadreAffamate: affamate.length,
+        domandaTotale: domandaTotale,
+        offertaTotale: liberi.length,
+        rapportoDomandaOfferta: liberi.length > 0
+          ? round1(domandaTotale / liberi.length) : null,
+        liberiPerFascia: perFascia,
+        liberiAlmenoFascia: cumulativi,
+        rilancioMassimoRealistico: affamate.length ? affamate[0].maxOfferta : 0,
+        tensioneFasciaAlta: affamate.length > 0 && fasciaAlta < affamate.length,
+        nota: affamate.length === 0
+          ? 'Nessuna squadra deve ancora comprare in questo reparto.'
+          : (fasciaAlta === 0
+              ? 'Fascia alta (A+ e A) esaurita: restano solo A- e sotto. ' +
+                'Nessuna asta al rialzo attesa, punta sul rapporto qualita/prezzo.'
+              : (fasciaAlta < affamate.length
+                  ? fasciaAlta + ' giocatori di fascia alta per ' + affamate.length +
+                    ' squadre affamate: ' +
+                    ((affamate.length - fasciaAlta) === 1
+                      ? 'una restera\' senza'
+                      : (affamate.length - fasciaAlta) + ' resteranno senza') +
+                    '. Aste al rialzo probabili.'
+                  : (fasciaAlta === affamate.length
+                      ? 'Fascia alta in equilibrio esatto (' + fasciaAlta + ' per ' +
+                        affamate.length + ' squadre): margine zero, non temporeggiare.'
+                      : 'Fascia alta abbondante (' + fasciaAlta + ' per ' +
+                        affamate.length + ' squadre): puoi attendere.')))
+      };
+    }
+
+    /**
+     * Budget del reparto in corso, ricalcolato sugli slot che restano DAVVERO
+     * in questa fase. Segnala lo sforamento invece di impedirlo.
+     */
+    budgetFase(team, strategyKey, allTeams, faseOverride) {
+      const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
+      const fase = faseOverride || this.faseCorrente(allTeams).fase;
+      if (!fase) return { fase: null, completa: true };
+
+      const st = this.rosterState(team);
+      const mancanti = Math.max(0, this.roleLimits[fase] - st.countByRole[fase]);
+      const target = this.budgetTotal * strat[fase];
+      const speso = st.spentByRole[fase];
+      const residuoRuolo = target - speso;
+
+      // Quanto va tenuto da parte per i reparti non ancora iniziati.
+      const indice = ROLES.indexOf(fase);
+      const daRiservare = ROLES.slice(indice + 1).reduce((s, r) => {
+        const manc = Math.max(0, this.roleLimits[r] - st.countByRole[r]);
+        return s + (manc > 0 ? this.budgetTotal * strat[r] - st.spentByRole[r] : 0);
+      }, 0);
+
+      const disponibileDavvero = Math.max(0, st.residuo - Math.max(0, daRiservare));
+
+      return {
+        fase: fase,
+        slotMancantiInFase: mancanti,
+        budgetTargetRuolo: Math.round(target),
+        spesoNelRuolo: round1(speso),
+        residuoDiRuolo: round1(residuoRuolo),
+        mediaPerSlotRimanente: mancanti > 0 ? round1(residuoRuolo / mancanti) : 0,
+        riservatoPerReparteSuccessivi: Math.round(Math.max(0, daRiservare)),
+        spendibileSenzaSforare: Math.round(Math.max(0, residuoRuolo)),
+        spendibileSforando: Math.round(disponibileDavvero),
+        sforamento: residuoRuolo < 0 ? round1(-residuoRuolo) : 0,
+        avviso: residuoRuolo < 0
+          ? 'Hai gia\' sforato di ' + round1(-residuoRuolo) + ' crediti sul ' +
+            fase + ': i reparti successivi ne pagheranno il conto.'
+          : (mancanti > 0 && residuoRuolo / mancanti < 2
+              ? 'Restano ' + round1(residuoRuolo) + ' crediti per ' + mancanti +
+                ' slot in questa fase: puoi solo completare al minimo.'
+              : null)
+      };
+    }
+
+    /**
+     * Chiamare adesso o aspettare?
+     * Se i giocatori di livello pari o superiore sono meno delle squadre
+     * ancora affamate, il nome e' conteso: chiamalo tu o restane fuori con
+     * lucidita'. Se invece l'offerta abbonda, conviene lasciarlo chiamare
+     * ad altri e rilanciare in coda con piu' informazioni.
+     */
+    chiamaOraOAspetta(player, allTeams, allPlayers) {
+      if (!player) return { errore: 'giocatore non trovato' };
+      const ruolo = normRole(player.role || player.roleShort);
+      const sc = this.scarsitaFase(allTeams, allPlayers, ruolo);
+      const info = this.faseCorrente(allTeams);
+
+      if (info.fase && ruolo !== info.fase) {
+        return {
+          giocatore: player.name,
+          ruolo: ruolo,
+          faseInCorso: info.fase,
+          verdetto: 'FUORI FASE',
+          motivo: 'Si stanno chiamando i ' + info.fase + ': questo giocatore ' +
+                  'non e\' ancora in asta.'
+        };
+      }
+
+      // Se e' gia' stato comprato non c'e' nulla da decidere.
+      const liberi = this.availablePlayers(allPlayers, allTeams);
+      const ancoraLibero = liberi.some((p) =>
+        (p.id !== undefined && p.id === player.id) ||
+        nameKey(p.name) === nameKey(player.name));
+      if (!ancoraLibero) {
+        return {
+          giocatore: player.name,
+          ruolo: ruolo,
+          tier: player.tierConsensus || player.tier,
+          verdetto: 'GIA\' ACQUISTATO',
+          motivo: 'Questo giocatore e\' gia\' stato comprato: non e\' piu\' in asta.'
+        };
+      }
+
+      const tier = player.tierConsensus || player.tier;
+      const almeno = sc.liberiAlmenoFascia ? sc.liberiAlmenoFascia[tier] : null;
+      const affamate = sc.numeroSquadreAffamate || 0;
+
+      let verdetto, motivo;
+      if (almeno === null || affamate === 0) {
+        verdetto = 'NESSUNA PRESSIONE';
+        motivo = 'Nessuna squadra deve ancora comprare in questo reparto.';
+      } else if (almeno < affamate) {
+        verdetto = 'CHIAMALO TU ORA';
+        const esclusi = affamate - almeno;
+        motivo = 'Restano ' + almeno + ' giocatori di livello ' + tier +
+          ' o superiore per ' + affamate + ' squadre ancora affamate: ' +
+          (esclusi === 1 ? 'una restera\'' : esclusi + ' resteranno') +
+          ' a bocca asciutta. Se lo vuoi, chiamalo tu adesso; ' +
+          'altrimenti mettilo in conto perso.';
+      } else if (almeno === affamate) {
+        verdetto = 'MARGINE ZERO';
+        motivo = 'Ci sono esattamente ' + almeno + ' giocatori di livello ' +
+          tier + ' o superiore per ' + affamate + ' squadre affamate: basta ' +
+          'che una squadra ne prenda due e qualcuno resta fuori. Puoi ' +
+          'aspettare un giro, non di piu\'.';
+      } else {
+        verdetto = 'PUOI ASPETTARE';
+        motivo = 'Ci sono ' + almeno + ' giocatori di livello ' + tier +
+          ' o superiore per sole ' + affamate + ' squadre affamate: lascialo ' +
+          'chiamare ad altri e inserisciti in coda, il prezzo restera\' basso.';
+      }
+
+      return {
+        giocatore: player.name,
+        ruolo: ruolo,
+        tier: tier,
+        squadreAffamate: affamate,
+        liberiDiPariLivelloOSuperiore: almeno,
+        margine: almeno !== null ? almeno - affamate : null,
+        tettoMassimoAvversario: sc.rilancioMassimoRealistico,
+        verdetto: verdetto,
+        motivo: motivo
+      };
+    }
+
     generateFullReport(team, strategyKey, allTeams, allPlayers, myTeamNum) {
       const availables = this.availablePlayers(allPlayers, allTeams);
       const st = this.rosterState(team);
@@ -528,6 +810,9 @@
       return {
         timestamp: new Date().toISOString(),
         stato: st,
+        fase: this.faseCorrente(allTeams),
+        scarsita: this.scarsitaFase(allTeams, allPlayers),
+        budgetFase: this.budgetFase(team, strategyKey, allTeams),
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
         consiglio: this.consiglioPrincipale(team, strategyKey, availables),
@@ -570,10 +855,27 @@
     return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy());
   }
 
+  /** Chiamare adesso o aspettare? Decisione tattica sul singolo nome. */
+  function chiamaOAspetta(nome) {
+    const p = AI_AGENT.findPlayer(getPlayers(), nome);
+    if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
+    return AI_AGENT.chiamaOraOAspetta(p, getTeams(), getPlayers());
+  }
+
+  /** Stato della fase di reparto in corso. */
+  function faseAsta() {
+    return AI_AGENT.faseCorrente(getTeams());
+  }
+
+  /** Scarsita' del reparto in corso: chi e' ancora affamato, cosa resta. */
+  function scarsita(ruolo) {
+    return AI_AGENT.scarsitaFase(getTeams(), getPlayers(), normRole(ruolo) || null);
+  }
+
   /** Scheda completa di un giocatore. */
   function scheda(nome) {
     const p = AI_AGENT.findPlayer(getPlayers(), nome);
-    return p ? AI_AGENT.schedaCompleta(p) : { errore: '"' + nome + '" non trovato.' };
+    return p ? AI_AGENT.schedaCompleta(p, getPlayers()) : { errore: '"' + nome + '" non trovato.' };
   }
 
   function formatReportForClaude(report) {
@@ -583,6 +885,40 @@
 
     L.push('ASTA IN CORSO — ' + new Date().toLocaleTimeString('it-IT'));
     L.push('');
+
+    const f = r.fase || {};
+    const sc = r.scarsita || {};
+    if (f.completa) {
+      L.push('FASE: ASTA CONCLUSA — tutte le rose sono complete.');
+    } else if (f.fase) {
+      L.push('FASE IN CORSO: ' + f.fase +
+             ' — ' + f.slotRiempiti + '/' + f.slotTotali + ' slot (' +
+             f.percentuale + '%)');
+      if (sc.numeroSquadreAffamate !== undefined) {
+        L.push('- Squadre ancora affamate: ' + sc.numeroSquadreAffamate + ' su 8');
+        L.push('- Tetto massimo teorico di un avversario affamato: ' +
+               sc.rilancioMassimoRealistico +
+               ' (limite di budget, non previsione di spesa)');
+        const pf = sc.liberiPerFascia || {};
+        L.push('- Liberi per fascia: ' +
+               TIER_ORDER.map((t) => t + ':' + (pf[t] || 0)).join('  '));
+        if (sc.nota) L.push('- ' + sc.nota);
+      }
+      const bf = r.budgetFase || {};
+      if (bf.fase) {
+        L.push('- Budget di fase: ' + bf.spendibileSenzaSforare +
+               ' crediti per ' + bf.slotMancantiInFase + ' slot tuoi (' +
+               bf.mediaPerSlotRimanente + ' a slot)');
+        if (bf.avviso) L.push('  ⚠️ ' + bf.avviso);
+      }
+      if (f.slotResidui <= 3 && f.slotResidui > 0) {
+        L.push('- ⚠️ Mancano solo ' + f.slotResidui +
+               ' slot alla chiusura della fase ' + f.fase +
+               (f.faseSuccessiva ? ': prepara la fase ' + f.faseSuccessiva : ''));
+      }
+      L.push('');
+    }
+
     L.push('LA MIA SQUADRA');
     L.push('- Speso ' + st.spent + ' / ' + AI_AGENT.budgetTotal +
            ', residuo ' + st.residuo);
@@ -663,6 +999,9 @@
     formatReportForClaude: formatReportForClaude,
     quantoOffrirePer: quantoOffrirePer,
     scheda: scheda,
+    chiamaOAspetta: chiamaOAspetta,
+    faseAsta: faseAsta,
+    scarsita: scarsita,
     normRole: normRole,
     nameKey: nameKey
   };
