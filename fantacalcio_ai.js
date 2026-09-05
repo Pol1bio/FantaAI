@@ -77,12 +77,38 @@
       }
       this.defenseModifier = !!(r && r.defenseModifier && r.defenseModifier.enabled);
 
+      /**
+       * Quote di budget per reparto.
+       *
+       * Ricalibrate sul regolamento reale della lega (modificatore difesa
+       * con portiere incluso, media sui migliori 3 difensori + portiere).
+       * Il primo scalino del modificatore (media >= 6.00, +1 punto) costa
+       * 10-25 crediti; il secondo (>= 6.25, +1.5) ne costa ~56; il terzo
+       * e' irraggiungibile. Quindi oltre il primo scalino i crediti in
+       * difesa rendono molto meno che in attacco, dove il rendimento
+       * cala in modo regolare (~+0.24 di fantamedia per raddoppio di prezzo).
+       *
+       * CONSERVATIVA e' l'unica che punta al secondo scalino: per questo
+       * tiene 12% sulla difesa. Le altre si accontentano del primo.
+       */
       this.strategies = {
-        conservativa:        { name: 'CONSERVATIVA',      POR: 0.07, DIF: 0.19, CEN: 0.32, ATT: 0.42 },
-        bilanciata:          { name: 'BILANCIATA',        POR: 0.09, DIF: 0.17, CEN: 0.27, ATT: 0.47 },
-        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.06, DIF: 0.14, CEN: 0.24, ATT: 0.56 },
-        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.06, DIF: 0.18, CEN: 0.38, ATT: 0.38 }
+        conservativa:        { name: 'CONSERVATIVA',      POR: 0.07, DIF: 0.12, CEN: 0.29, ATT: 0.52 },
+        bilanciata:          { name: 'BILANCIATA',        POR: 0.06, DIF: 0.09, CEN: 0.25, ATT: 0.60 },
+        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.05, DIF: 0.07, CEN: 0.20, ATT: 0.68 },
+        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.06, DIF: 0.09, CEN: 0.35, ATT: 0.50 }
       };
+
+      /**
+       * Quanti slot per reparto sono TITOLARI (vanno pagati) e quanti
+       * sono panchinari (bastano 1-2 crediti).
+       *
+       * Il modificatore richiede di schierarne 4 in difesa, ma contano
+       * solo i migliori 3 + portiere: il quarto serve a qualificarsi.
+       * In campo vanno 11 giocatori su 25, quindi meta' rosa non gioca
+       * mai e non va pagata.
+       */
+      this.slotTitolari = { POR: 1, DIF: 4, CEN: 5, ATT: 3 };
+      this.prezzoPanchinaro = 1.5;
     }
 
     // -------------------------------------------------------- stato squadra
@@ -443,11 +469,27 @@
       }
 
       const vincolante = limiti.reduce((m, l) => (l.tetto < m.tetto ? l : m), limiti[0]);
+      const offerta = Math.max(0, Math.floor(vincolante.tetto));
+
+      /**
+       * Soglia di rendimento marginale.
+       * In attacco il rendimento cala col prezzo (~+0.24 di fantamedia per
+       * raddoppio). Intorno ai 115 crediti il credito successivo rende quanto
+       * renderebbe speso altrove: oltre quella soglia conviene fermarsi.
+       * Non e' un divieto, e' un promemoria nel momento del rilancio.
+       */
+      const sogliaRendimento = (role === 'ATT' && offerta > 115)
+        ? 'Sopra i ~115 crediti il rendimento marginale di una punta scende ' +
+          'sotto quello di rinforzare un altro reparto. Puoi arrivarci, ma ' +
+          'sappi che ogni credito oltre quella soglia rende poco.'
+        : null;
+
       return {
         giocatore: player.name,
         ruolo: role,
-        offertaMassima: Math.max(0, Math.floor(vincolante.tetto)),
+        offertaMassima: offerta,
         vincoloAttivo: vincolante.fonte,
+        sogliaRendimento: sogliaRendimento,
         tuttiILimiti: limiti,
         slotRimanentiNelRuolo: a ? a.needed : null,
         verdetto: player.verdict,
@@ -793,6 +835,19 @@
       const speso = st.spentByRole[fase];
       const residuoRuolo = target - speso;
 
+      // --- Titolari e panchinari -------------------------------------
+      // Dividere il budget in parti uguali sugli slot e' sbagliato: in
+      // campo va meno di meta' della rosa. I panchinari costano 1-2
+      // crediti, quindi quasi tutto il residuo spetta ai titolari.
+      const titolariTot = this.slotTitolari[fase] || this.roleLimits[fase];
+      const presi = st.countByRole[fase];
+      const titolariMancanti = Math.max(0, titolariTot - presi);
+      const panchinariMancanti = Math.max(0, mancanti - titolariMancanti);
+      const costoPanchina = panchinariMancanti * this.prezzoPanchinaro;
+      const perTitolari = Math.max(0, residuoRuolo - costoPanchina);
+      const perTitolare = titolariMancanti > 0
+        ? round1(perTitolari / titolariMancanti) : 0;
+
       // Quanto va tenuto da parte per i reparti non ancora iniziati.
       const indice = ROLES.indexOf(fase);
       const daRiservare = ROLES.slice(indice + 1).reduce((s, r) => {
@@ -809,6 +864,17 @@
         spesoNelRuolo: round1(speso),
         residuoDiRuolo: round1(residuoRuolo),
         mediaPerSlotRimanente: mancanti > 0 ? round1(residuoRuolo / mancanti) : 0,
+        titolariMancanti: titolariMancanti,
+        panchinariMancanti: panchinariMancanti,
+        budgetPerTitolare: perTitolare,
+        costoPanchinaStimato: round1(costoPanchina),
+        pianoSlot: titolariMancanti > 0
+          ? titolariMancanti + ' titolari da ~' + perTitolare + ' crediti + ' +
+            panchinariMancanti + ' panchinari da 1-2'
+          : (panchinariMancanti > 0
+              ? 'restano solo ' + panchinariMancanti + ' panchinari: 1-2 crediti l\'uno'
+              : 'reparto completo'),
+
         riservatoPerReparteSuccessivi: Math.round(Math.max(0, daRiservare)),
         spendibileSenzaSforare: Math.round(Math.max(0, residuoRuolo)),
         spendibileSforando: Math.round(disponibileDavvero),
@@ -1079,8 +1145,8 @@
       const bf = r.budgetFase || {};
       if (bf.fase) {
         L.push('- Budget di fase: ' + bf.spendibileSenzaSforare +
-               ' crediti per ' + bf.slotMancantiInFase + ' slot tuoi (' +
-               bf.mediaPerSlotRimanente + ' a slot)');
+               ' crediti per ' + bf.slotMancantiInFase + ' slot tuoi');
+        L.push('  Come distribuirli: ' + bf.pianoSlot);
         if (bf.avviso) L.push('  ⚠️ ' + bf.avviso);
       }
       if (f.slotResidui <= 3 && f.slotResidui > 0) {
