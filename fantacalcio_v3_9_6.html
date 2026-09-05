@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asta Fantacalcio v3.9.9.3</title>
+    <title>Asta Fantacalcio v3.9.9.3b</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=3993">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=3994">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.3</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.3b</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
             </div>
         </header>
@@ -138,6 +138,7 @@
                             <span id="utilityChevron">▸</span>
                         </button>
                         <div id="utilityBody" class="utility-body" style="display:none;">
+                            <button onclick="generaSquadreRandom()" class="secondary" style="background: #059669; border-color: #047857;">🎲 Genera squadre</button>
                             <button onclick="downloadAstaJSON()" class="secondary">📥 Scarica Asta</button>
                             <button onclick="document.getElementById('loadAstaInput').click()" class="secondary">📤 Carica Asta</button>
                             <button onclick="resetRose()" class="secondary" style="background: #7c3aed; border-color: #6d28d9;">🔄 Reset Rose</button>
@@ -261,8 +262,8 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=3993"></script>
-    <script src="fantacalcio_app.js?v=3993"></script>
-    <script src="fantacalcio_ai.js?v=3993"></script>
+    <script src="players_data.js?v=3994"></script>
+    <script src="fantacalcio_app.js?v=3994"></script>
+    <script src="fantacalcio_ai.js?v=3994"></script>
 </body>
 </html>
