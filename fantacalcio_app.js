@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.4 - APP LOGIC
+        // FANTACALCIO v3.9.9.5 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -702,9 +702,10 @@
                 html += `<div style="font-size:11px;color:#f87171;margin-bottom:6px;">⚠️ ${sch.rischi.map(escapeHtml).join(', ')}</div>`;
             }
 
-            // Compagni di reparto: solo i primi 3, gli altri sono rumore in asta
+            // Compagni di reparto: l'agente ne restituisce gia' i primi 3
             if (sch && sch.compagniDiReparto && sch.compagniDiReparto.length) {
-                const top = sch.compagniDiReparto.slice(0, 3);
+                const top = sch.compagniDiReparto;
+                const altri = sch.compagniDiReparto.altriNonMostrati || 0;
                 html += `<div style="border-top:1px solid #334155;padding-top:6px;margin-top:6px;">
                     <div style="font-size:10px;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Stesso ruolo, stessa squadra</div>`;
                 top.forEach(c => {
@@ -713,8 +714,8 @@
                         <span>${c.titolarita}% · ${c.prezzoMercato}</span>
                     </div>`;
                 });
-                if (sch.compagniDiReparto.length > 3) {
-                    html += `<div style="font-size:10px;color:#475569;margin-top:2px;">+${sch.compagniDiReparto.length - 3} altri</div>`;
+                if (altri > 0) {
+                    html += `<div style="font-size:10px;color:#475569;margin-top:2px;">+${altri} altri</div>`;
                 }
                 html += `</div>`;
             }
