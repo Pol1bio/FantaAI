@@ -991,16 +991,38 @@
         ? availables.filter((p) => normRole(p.role || p.roleShort) === fase)
         : availables;
 
+      /**
+       * Gli obiettivi devono rispettare il budget dello SLOT in corso, non
+       * tutta la cassa. Se il piano dice che restano solo panchinari da 1-2
+       * crediti, proporre un titolare da 40 e' una contraddizione.
+       */
+      const bf = this.budgetFase(team, strategyKey, allTeams);
+      let tettoObiettivi = st.maxOffertaOra;
+      let notaObiettivi = null;
+      if (bf && bf.fase) {
+        if (bf.titolariMancanti > 0 && bf.budgetPerTitolare > 0) {
+          // margine del 40%: in asta si paga sopra il piano
+          tettoObiettivi = Math.min(tettoObiettivi,
+                                    Math.ceil(bf.budgetPerTitolare * 1.4));
+          notaObiettivi = 'filtrati sul budget per titolare (~' +
+                          bf.budgetPerTitolare + ' crediti, +40% di margine)';
+        } else if (bf.panchinariMancanti > 0) {
+          tettoObiettivi = Math.min(tettoObiettivi, 3);
+          notaObiettivi = 'restano solo slot da panchina: sotto i 3 crediti';
+        }
+      }
+
       return {
         timestamp: new Date().toISOString(),
         stato: st,
         fase: infoFase,
         scarsita: this.scarsitaFase(allTeams, allPlayers, null, note),
-        budgetFase: this.budgetFase(team, strategyKey, allTeams),
+        budgetFase: bf,
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
         consiglio: this.consiglioPrincipale(team, strategyKey, inFase, fase),
-        obiettivi: this.bestValue(inFase, { maxSpesa: st.maxOffertaOra, limit: 8 }),
+        obiettivi: this.bestValue(inFase, { maxSpesa: tettoObiettivi, limit: 8 }),
+        notaObiettivi: notaObiettivi,
         occasioniModificatore: this.modificatoreBargains(inFase, 8),
         specialistiPiazzati: this.specialisti(inFase, 6),
         trappole: this.trappole(inFase, 6),
@@ -1188,6 +1210,7 @@
     if (r.obiettivi.length) {
       L.push('');
       L.push('OBIETTIVI ALLA MIA PORTATA' + (r.fase && r.fase.fase ? ' (reparto ' + r.fase.fase + ', in asta ora)' : ''));
+      if (r.notaObiettivi) L.push('(' + r.notaObiettivi + ')');
       r.obiettivi.forEach((c) => L.push(card(c)));
     }
     if (r.occasioniModificatore.length) {
