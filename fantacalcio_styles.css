@@ -237,14 +237,14 @@ header h1 {
 /* LAYOUT 4-COLONNE */
 .main-layout-4col {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
+    grid-template-columns: 1.1fr 1.4fr 0.95fr;
     gap: 20px;
     margin: 30px 0;
     align-items: start;
 }
 
 .col-players-left {
-    grid-column: span 2;
+    grid-column: span 1;
 }
 
 .col-register {
@@ -570,7 +570,7 @@ button.secondary:hover {
 
 .player-row {
     display: grid;
-    grid-template-columns: 2fr 1fr 0.6fr 0.7fr 0.6fr;
+    grid-template-columns: 1.3fr 0.6fr 0.6fr 0.7fr 0.6fr;
     gap: 10px;
     padding: 12px;
     background: #0f172a;
@@ -853,8 +853,12 @@ input:checked + .toggle-slider:before {
 }
 
 /* IA PANEL */
-.ia-panel-row {
+.ia-report-row {
+    display: grid;
+    grid-template-columns: 2fr 4fr;
+    gap: 20px;
     margin-top: 30px;
+    align-items: start;
 }
 
 .ia-panel {
@@ -959,7 +963,7 @@ input:checked + .toggle-slider:before {
 /* Intestazione colonne della lista giocatori */
 .players-list-header {
     display: grid;
-    grid-template-columns: 2fr 1fr 0.6fr 0.7fr 0.6fr;
+    grid-template-columns: 1.3fr 0.6fr 0.6fr 0.7fr 0.6fr;
     gap: 10px;
     padding: 6px 12px;
     font-size: 10px;
@@ -1159,4 +1163,46 @@ input:checked + .toggle-slider:before {
     word-break: break-word;
     max-height: 420px;
     overflow-y: auto;
+}
+
+/* ==========================================
+   REPORT LIVE PANEL (v3.9.9c)
+   Pannello collassabile affiancato all'Agente IA
+   ========================================== */
+.report-live-panel {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    padding: 20px;
+    color: #e2e8f0;
+}
+
+.report-live-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #0f172a;
+    border: 1px solid #334155;
+    color: #93c5fd;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 15px;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-bottom: 12px;
+    transition: all 0.15s;
+}
+.report-live-toggle:hover {
+    background: #1e293b;
+    border-color: #475569;
+}
+
+.report-live-body {
+    max-height: 500px;
+    overflow-y: auto;
+}
+
+.report-live-body .report-card {
+    margin-bottom: 8px;
 }
