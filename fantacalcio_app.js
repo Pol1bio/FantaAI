@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.5 - APP LOGIC
+        // FANTACALCIO v3.9.7 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -15,6 +15,55 @@
         let teamOrder = [];
         let conversationHistory = [];
         let teamNamesConfirmed = false;
+
+        // Fase in corso: calcolata dai dati, sovrascrivibile manualmente
+        // se c'è un errore di registrazione.
+        let phaseOverride = null;
+
+        // ==========================================
+        // LOGICA DI FASE (asta per reparto)
+        // ==========================================
+        const ROLE_ORDER = ['POR', 'DIF', 'CEN', 'ATT'];
+
+        /**
+         * Ritorna il ruolo attualmente in asta, o null se la rosa è completa.
+         * La fase avanza quando TUTTE le 8 squadre hanno riempito
+         * tutti gli slot del ruolo in corso.
+         * Se phaseOverride è impostato (manuale), usa quello.
+         */
+        function calcolaFaseCorrente() {
+            if (phaseOverride) return phaseOverride;
+            for (const role of ROLE_ORDER) {
+                const limite = ROLE_LIMITS[role];
+                let riempiti = 0;
+                for (let k = 1; k <= 8; k++) {
+                    if (!teams[k]) continue;
+                    const count = teams[k].players.filter(p => p.role === role).length;
+                    riempiti += Math.min(limite, count);
+                }
+                if (riempiti < limite * 8) return role;
+            }
+            return null; // asta completata
+        }
+
+        /**
+         * Override manuale della fase in caso di errore.
+         * Uso da console: forzaFase('DIF') oppure forzaFase(null) per tornare automatico.
+         */
+        function forzaFase(ruolo) {
+            const validi = ['POR', 'DIF', 'CEN', 'ATT', null];
+            if (!validi.includes(ruolo)) {
+                console.error('Ruolo non valido. Usa: POR, DIF, CEN, ATT, o null per automatico');
+                return;
+            }
+            phaseOverride = ruolo;
+            showMessage(ruolo
+                ? `⚠️ Fase forzata manualmente: ${ruolo}`
+                : '✅ Fase tornata in modalità automatica', 'error');
+            updateDisplay();
+        }
+        window.forzaFase = forzaFase;
+        window.calcolaFaseCorrente = calcolaFaseCorrente;
 
         // ==========================================
         // STRATEGIE DI BUDGET
@@ -550,6 +599,22 @@
                 return;
             }
 
+            // LOCK DI FASE: in asta a reparti si registra solo il ruolo in corso.
+            // Il blocco si applica quando il ruolo del giocatore non corrisponde
+            // alla fase attiva — ma non impedisce di completare acquisti del
+            // proprio reparto anche se altre squadre sono indietro.
+            const faseCorrente = calcolaFaseCorrente();
+            if (faseCorrente && selectedPlayer.role !== faseCorrente) {
+                const prossimaFase = ROLE_ORDER[ROLE_ORDER.indexOf(selectedPlayer.role)];
+                showMessage(
+                    `Fase ${faseCorrente}: puoi registrare solo ${faseCorrente} adesso. ` +
+                    `I ${selectedPlayer.role} si chiamano dopo. ` +
+                    `(Console: forzaFase('${selectedPlayer.role}') per override manuale)`,
+                    'error'
+                );
+                return;
+            }
+
             team.players.push({
                 id: selectedPlayer.id,
                 name: selectedPlayer.name,
@@ -562,13 +627,26 @@
             team.spent += price;
             team.budget -= price;
 
+            const playerName = selectedPlayer.name; // salva prima di clearForm
             saveData();
             updateDisplay();
             renderTeamsOverview();
             filterAvailable();
             setupAutocomplete(); // Aggiorna il filtro autocomplete
             clearForm();
-            showMessage(`${selectedPlayer.name} aggiunto a ${team.name}`, 'success');
+            showMessage(`${playerName} aggiunto a ${team.name}`, 'success');
+
+            // AVANZAMENTO FASE: controlla se questo acquisto ha completato il reparto.
+            // Mostra una notifica persistente — l'asta è a reparti, è il momento
+            // più importante dell'asta, non deve sparire dopo 2 secondi.
+            const nuovaFase = calcolaFaseCorrente();
+            if (nuovaFase !== faseCorrente) {
+                const msg = nuovaFase
+                    ? `✅ Fase ${faseCorrente} completata! Tutte le squadre hanno i loro ${faseCorrente}. Si passa ai ${nuovaFase}.`
+                    : `🏆 Asta completata! Tutte le rose sono piene.`;
+                // Timeout breve per non sovrascrivere il success del singolo acquisto
+                setTimeout(() => showMessage(msg, 'error'), 2200);
+            }
         }
 
         // ==========================================
@@ -673,6 +751,24 @@
                         <button class="remove-btn team-button" onclick="removeFromMySquad(${p.id})">✕</button>
                     </div>
                 `).join('');
+            }
+
+            // INDICATORE DI FASE nell'header
+            const faseEl = document.getElementById('faseIndicator');
+            if (faseEl) {
+                const fase = calcolaFaseCorrente();
+                const colori = { POR: '#f59e0b', DIF: '#3b82f6', CEN: '#10b981', ATT: '#ef4444' };
+                if (fase) {
+                    const nomi = { POR: 'PORTIERI', DIF: 'DIFENSORI', CEN: 'CENTROCAMPISTI', ATT: 'ATTACCANTI' };
+                    faseEl.textContent = `FASE: ${nomi[fase]}`;
+                    faseEl.style.background = (colori[fase] || '#6b7280') + '33';
+                    faseEl.style.color = colori[fase] || '#fff';
+                    if (phaseOverride) faseEl.textContent += ' ⚠️';
+                } else {
+                    faseEl.textContent = '🏆 ASTA COMPLETATA';
+                    faseEl.style.background = '#10b98133';
+                    faseEl.style.color = '#10b981';
+                }
             }
         }
 
