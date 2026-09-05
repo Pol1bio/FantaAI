@@ -124,14 +124,20 @@
        * difesa rendono molto meno che in attacco, dove il rendimento
        * cala in modo regolare (~+0.24 di fantamedia per raddoppio di prezzo).
        *
-       * CONSERVATIVA e' l'unica che punta al secondo scalino: per questo
-       * tiene 12% sulla difesa. Le altre si accontentano del primo.
+       * PORTIERI: quota bassa di proposito. Il modificatore usa il VOTO del
+       * portiere, non i suoi bonus, e cinque portieri titolari con media
+       * >= 6.15 costano meno di 12 crediti (Falcone 3.75 ha la stessa media
+       * di Svilar a 44.4). Pagare un portiere 30 crediti in questa lega
+       * significa buttarne circa 25.
+       *
+       * CONSERVATIVA e' l'unica che punta al secondo scalino del
+       * modificatore: per questo tiene 12% sulla difesa.
        */
       this.strategies = {
-        conservativa:        { name: 'CONSERVATIVA',      POR: 0.07, DIF: 0.12, CEN: 0.29, ATT: 0.52 },
-        bilanciata:          { name: 'BILANCIATA',        POR: 0.06, DIF: 0.09, CEN: 0.25, ATT: 0.60 },
-        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.05, DIF: 0.07, CEN: 0.20, ATT: 0.68 },
-        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.06, DIF: 0.09, CEN: 0.35, ATT: 0.50 }
+        conservativa:        { name: 'CONSERVATIVA',      POR: 0.03, DIF: 0.12, CEN: 0.29, ATT: 0.56 },
+        bilanciata:          { name: 'BILANCIATA',        POR: 0.03, DIF: 0.09, CEN: 0.25, ATT: 0.63 },
+        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.02, DIF: 0.07, CEN: 0.20, ATT: 0.71 },
+        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.03, DIF: 0.09, CEN: 0.35, ATT: 0.53 }
       };
 
       /**
@@ -586,20 +592,27 @@
      * Utile per portieri e attaccanti: la forza del singolo dipende anche
      * da chi gli sta dietro e da quanto tiene la squadra nel suo complesso.
      */
-    compagniDiReparto(player, allPlayers) {
+    compagniDiReparto(player, allPlayers, limit) {
       if (!player || !allPlayers) return [];
-      return allPlayers
+      // In asta contano i concorrenti reali per il posto: chi ha titolarita'
+      // molto bassa non toglie minuti. Elencarli tutti (fino a 9 per gli
+      // attacchi) e' rumore che allunga il report senza aggiungere nulla.
+      const tutti = allPlayers
         .filter((p) => p.team === player.team &&
                        p.role === player.role &&
                        p.id !== player.id)
-        .sort((a, b) => (b.expectedTitolarita || 0) - (a.expectedTitolarita || 0))
-        .map((p) => ({
-          nome: p.name,
-          tier: p.tierConsensus || p.tier,
-          titolarita: p.expectedTitolarita,
-          verdetto: p.verdict,
-          prezzoMercato: p.pma
-        }));
+        .sort((a, b) => (b.expectedTitolarita || 0) - (a.expectedTitolarita || 0));
+
+      const max = limit || 3;
+      const out = tutti.slice(0, max).map((p) => ({
+        nome: p.name,
+        tier: p.tierConsensus || p.tier,
+        titolarita: p.expectedTitolarita,
+        verdetto: p.verdict,
+        prezzoMercato: p.pma
+      }));
+      out.altriNonMostrati = Math.max(0, tutti.length - max);
+      return out;
     }
 
     /** Scheda completa: quando stai decidendo se rilanciare. */
@@ -609,6 +622,11 @@
       c.dettaglio = {
         fasciaFantaculo: player.fasciaFc,
         tierLaudantes: player.tierLaudantes,
+        // Lo slot Laudantes ordina per PREZZO di mercato, non per media
+        // voto: Buongiorno e' slot 8 ma ha la quinta media voto della
+        // categoria. Utile come riferimento di mercato, inutile per il
+        // modificatore. Non guida nessun calcolo.
+        slotDiMercato: player.slot,
         tierLaudantesAnnoScorso: player.tierLaudantes_2526,
         movimentoTier: player.tierMovement,
         budgetSuggeritoLaudantes: player.tierBudgetPct,
