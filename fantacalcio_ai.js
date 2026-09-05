@@ -114,6 +114,38 @@
       this.defenseModifier = !!(r && r.defenseModifier && r.defenseModifier.enabled);
 
       /**
+       * Bonus e malus della lega. Servono a pesare correttamente gli
+       * specialisti: un rigorista vale +3 a rigore segnato ma -3 se lo
+       * sbaglia, e in questa lega il cartellino giallo costa solo -0.5
+       * (meta' dello standard), quindi i giocatori falloso pesano meno.
+       */
+      const bm = (r && r.bonusAndMalus) || {};
+      this.punteggi = {
+        gol: bm.scoredGoal != null ? bm.scoredGoal : 3,
+        rigoreSegnato: bm.scoredPenalty != null ? bm.scoredPenalty : 3,
+        rigoreSbagliato: bm.missedPenalty != null ? bm.missedPenalty : -3,
+        rigoreParato: bm.recoveredPenalty != null ? bm.recoveredPenalty : 3,
+        assist: bm.assist != null ? bm.assist : 1,
+        imbattibilita: bm.cleanSheet != null ? bm.cleanSheet : 1,
+        golSubito: bm.goalConceded != null ? bm.goalConceded : -1,
+        giallo: bm.yellowCard != null ? bm.yellowCard : -0.5,
+        rosso: bm.redCard != null ? bm.redCard : -1,
+        autogol: bm.ownGoal != null ? bm.ownGoal : -2
+      };
+
+      /**
+       * Soglie gol: il fantavoto di squadra si converte in gol a scaglioni.
+       * Con 11 titolari da 6 si arriva esattamente a 66, cioe' il primo gol:
+       * ogni punto in piu' vale 1/5 di gol.
+       */
+      const gl = (r && r.goals && r.goals.thresholds) || {};
+      this.soglieGol = {
+        primo: (gl.firstGoal && gl.firstGoal.points) || 66,
+        secondo: (gl.secondGoal && gl.secondGoal.points) || 71,
+        passo: (gl.additionalGoals && gl.additionalGoals.perEvery) || 5
+      };
+
+      /**
        * Quote di budget per reparto.
        *
        * Ricalibrate sul regolamento reale della lega (modificatore difesa
@@ -124,11 +156,16 @@
        * difesa rendono molto meno che in attacco, dove il rendimento
        * cala in modo regolare (~+0.24 di fantamedia per raddoppio di prezzo).
        *
-       * PORTIERI: quota bassa di proposito. Il modificatore usa il VOTO del
-       * portiere, non i suoi bonus, e cinque portieri titolari con media
-       * >= 6.15 costano meno di 12 crediti (Falcone 3.75 ha la stessa media
-       * di Svilar a 44.4). Pagare un portiere 30 crediti in questa lega
-       * significa buttarne circa 25.
+       * PORTIERI: quota bassa, ma non perche' i portieri si equivalgano.
+       * Sul MODIFICATORE contano solo per il voto, e li' Falcone (3.75,
+       * mv 6.307) vale quanto Svilar (44.4, mv 6.320). Sui PUNTI invece
+       * la differenza esiste: il portiere prende -1 per gol subito e +1
+       * per imbattibilita', quindi uno di una difesa solida rende di piu'
+       * (Svilar fm 5.408 contro Falcone 4.973, ~16 punti stagione).
+       * Ma quei 16 punti costano 40 crediti, e Skorupski (5.45, fm 5.217,
+       * titolare al 91%) ne recupera la maggior parte spendendone 5.
+       * Da qui la quota bassa: prendere un portiere titolare di buona
+       * difesa senza pagare la fascia alta.
        *
        * CONSERVATIVA e' l'unica che punta al secondo scalino del
        * modificatore: per questo tiene 12% sulla difesa.
@@ -540,11 +577,30 @@
 
     /** Rigoristi e specialisti dei piazzati liberi (gol e rigore valgono 3). */
     specialisti(availables, limit) {
+      const P = this.punteggi;
       return availables
         .filter((p) => (p.setPieces || []).length > 0)
         .sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0))
         .slice(0, limit || 8)
-        .map((p) => this.playerCard(p));
+        .map((p) => {
+          const c = this.playerCard(p);
+          const sp = (p.setPieces || []).map((x) => String(x).toUpperCase());
+          const rigorista = sp.some((x) => x.indexOf('RIGOR') !== -1);
+          // penaltyProbability = probabilita' di essere il rigorista
+          // DESIGNATO (per squadra somma ~100), non la percentuale di
+          // realizzazione. Calcolarci sopra un valore atteso darebbe
+          // numeri falsi.
+          const quota = p.penaltyProbability;
+          if (rigorista || (quota != null && quota >= 40)) {
+            c.rigori = (quota != null && quota > 0)
+              ? 'Tira i rigori nel ' + quota + '% dei casi (quota di squadra). ' +
+                'Rigore segnato ' + P.rigoreSegnato + ', sbagliato ' +
+                P.rigoreSbagliato + '.'
+              : 'Indicato fra i rigoristi. Rigore segnato ' + P.rigoreSegnato +
+                ', sbagliato ' + P.rigoreSbagliato + '.';
+          }
+          return c;
+        });
     }
 
     /** Giocatori che il mercato paghera' molto piu' di quanto valgono. */
@@ -1552,9 +1608,11 @@
     if (r.specialistiPiazzati.length) {
       L.push('');
       L.push('RIGORISTI E PIAZZATI ANCORA LIBERI' + (r.fase && r.fase.fase ? ' — reparto ' + r.fase.fase : '') + ' (gol e rigore valgono 3)');
-      r.specialistiPiazzati.forEach((c) =>
+      r.specialistiPiazzati.forEach((c) => {
         L.push('- ' + c.nome + ' (' + c.ruolo + ') ' + c.piazzati.join(', ') +
-               ' — mercato ~' + c.prezzoMercato));
+               ' — mercato ~' + c.prezzoMercato);
+        if (c.rigori) L.push('  ' + c.rigori);
+      });
     }
     if (r.trappole.length) {
       L.push('');
