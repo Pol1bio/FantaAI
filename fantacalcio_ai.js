@@ -507,7 +507,7 @@
 
     // --------------------------------------------------------------- report
 
-    consiglioPrincipale(team, strategyKey, availables) {
+    consiglioPrincipale(team, strategyKey, availables, fase) {
       const st = this.rosterState(team);
       const analysis = this.analyzeTeam(team, strategyKey);
 
@@ -522,14 +522,32 @@
                         'scoperti cerca chi ha titolarita alta e prezzo minimo.' };
       }
 
-      // Ruolo piu' urgente: piu' slot mancanti rispetto al budget che gli resta.
-      let urgente = null, peggiore = -Infinity;
-      ROLES.forEach((r) => {
-        const a = analysis[r];
-        if (a.needed === 0) return;
-        const tensione = a.needed - (a.budgetResiduoRuolo / 10);
-        if (tensione > peggiore) { peggiore = tensione; urgente = r; }
-      });
+      // L'asta e' sequenziale per reparto: l'unico ruolo su cui si puo'
+      // agire adesso e' quello in fase. Consigliare altri ruoli sarebbe
+      // suggerire mosse che il regolamento non consente.
+      let urgente = null;
+      if (fase && analysis[fase] && analysis[fase].needed > 0) {
+        urgente = fase;
+      } else if (fase && analysis[fase] && analysis[fase].needed === 0) {
+        const prossimo = ROLES[ROLES.indexOf(fase) + 1];
+        return {
+          icon: '\u23F8\uFE0F', titolo: 'REPARTO ' + fase + ' COMPLETATO',
+          testo: 'Hai gia\' i tuoi ' + this.roleLimits[fase] + ' ' + fase +
+                 '. Devi attendere che anche le altre squadre completino il ' +
+                 'reparto prima di passare' +
+                 (prossimo ? ' ai ' + prossimo : ' oltre') +
+                 '. Usa il tempo per studiare i prossimi reparti.'
+        };
+      } else {
+        // Nessuna fase nota: ripiego sul ruolo piu' teso.
+        let peggiore = -Infinity;
+        ROLES.forEach((r) => {
+          const a = analysis[r];
+          if (a.needed === 0) return;
+          const tensione = a.needed - (a.budgetResiduoRuolo / 10);
+          if (tensione > peggiore) { peggiore = tensione; urgente = r; }
+        });
+      }
 
       if (urgente) {
         const a = analysis[urgente];
@@ -806,20 +824,28 @@
       const availables = this.availablePlayers(allPlayers, allTeams);
       const st = this.rosterState(team);
       const mine = myTeamNum || 1;
+      const infoFase = this.faseCorrente(allTeams);
+      const fase = infoFase.fase;
+
+      // In asta a reparti solo i giocatori della fase in corso sono
+      // chiamabili: mostrare gli altri come "obiettivi" e' fuorviante.
+      const inFase = fase
+        ? availables.filter((p) => normRole(p.role || p.roleShort) === fase)
+        : availables;
 
       return {
         timestamp: new Date().toISOString(),
         stato: st,
-        fase: this.faseCorrente(allTeams),
+        fase: infoFase,
         scarsita: this.scarsitaFase(allTeams, allPlayers),
         budgetFase: this.budgetFase(team, strategyKey, allTeams),
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
-        consiglio: this.consiglioPrincipale(team, strategyKey, availables),
-        obiettivi: this.bestValue(availables, { maxSpesa: st.maxOffertaOra, limit: 8 }),
-        occasioniModificatore: this.modificatoreBargains(availables, 8),
-        specialistiPiazzati: this.specialisti(availables, 6),
-        trappole: this.trappole(availables, 6),
+        consiglio: this.consiglioPrincipale(team, strategyKey, inFase, fase),
+        obiettivi: this.bestValue(inFase, { maxSpesa: st.maxOffertaOra, limit: 8 }),
+        occasioniModificatore: this.modificatoreBargains(inFase, 8),
+        specialistiPiazzati: this.specialisti(inFase, 6),
+        trappole: this.trappole(inFase, 6),
         mercato: this.pressioneMercato(allTeams, mine),
         avversari: Object.keys(allTeams || {})
           .filter((k) => String(k) !== String(mine))
@@ -949,7 +975,7 @@
 
     if (r.obiettivi.length) {
       L.push('');
-      L.push('OBIETTIVI ALLA MIA PORTATA');
+      L.push('OBIETTIVI ALLA MIA PORTATA' + (r.fase && r.fase.fase ? ' (reparto ' + r.fase.fase + ', in asta ora)' : ''));
       r.obiettivi.forEach((c) => L.push(card(c)));
     }
     if (r.occasioniModificatore.length) {
@@ -963,14 +989,14 @@
     }
     if (r.specialistiPiazzati.length) {
       L.push('');
-      L.push('RIGORISTI E PIAZZATI ANCORA LIBERI (gol e rigore valgono 3)');
+      L.push('RIGORISTI E PIAZZATI ANCORA LIBERI' + (r.fase && r.fase.fase ? ' — reparto ' + r.fase.fase : '') + ' (gol e rigore valgono 3)');
       r.specialistiPiazzati.forEach((c) =>
         L.push('- ' + c.nome + ' (' + c.ruolo + ') ' + c.piazzati.join(', ') +
                ' — mercato ~' + c.prezzoMercato));
     }
     if (r.trappole.length) {
       L.push('');
-      L.push('DA NON RILANCIARE (il mercato li paga piu di quanto valgano)');
+      L.push('DA NON RILANCIARE' + (r.fase && r.fase.fase ? ' — reparto ' + r.fase.fase : '') + ' (il mercato li paga piu di quanto valgano)');
       r.trappole.forEach((c) =>
         L.push('- ' + c.nome + ' (' + c.ruolo + ') mercato ~' + c.prezzoMercato +
                ' ma il tetto sensato e ' + c.prezzoMaxConsigliato));
