@@ -38,6 +38,41 @@
     PORTIERE: 'POR', DIFENSORE: 'DIF', CENTROCAMPISTA: 'CEN', ATTACCANTE: 'ATT'
   };
 
+  /**
+   * AFFIDABILITA' DEL DATO STORICO
+   *
+   * La media voto su poche partite non predice nulla: Stankovic F. ha
+   * mvStorica 6.60, la piu' alta fra i portieri, ma su 17 presenze in
+   * quattro stagioni. Comprarlo per il modificatore sarebbe un errore.
+   *
+   * Nota: modPresenzeTotali NON si puo' usare come filtro generale,
+   * perche' e' popolato solo per POR e DIF (vale 0 per tutti i 279
+   * centrocampisti e attaccanti). Si sommano invece le presenze per
+   * stagione, che esistono per ogni ruolo.
+   */
+  const PRESENZE_AFFIDABILI = 50;   // sotto: la media e' indicativa
+  const PRESENZE_MINIME = 20;       // sotto: la media non dice nulla
+
+  const presenzeTotali = (p) =>
+    ['pv_2324', 'pv_2425', 'pv_2526', 'pv_2627']
+      .reduce((a, k) => a + (Number(p && p[k]) || 0), 0);
+
+  /** 'solida' | 'indicativa' | 'inaffidabile' */
+  const affidabilita = (p) => {
+    const n = presenzeTotali(p);
+    if (n >= PRESENZE_AFFIDABILI) return 'solida';
+    if (n >= PRESENZE_MINIME) return 'indicativa';
+    return 'inaffidabile';
+  };
+
+  /** Avviso testuale, o null se il dato regge. */
+  const avvisoCampione = (p) => {
+    const n = presenzeTotali(p);
+    if (n >= PRESENZE_AFFIDABILI) return null;
+    if (n === 0) return 'nessuna presenza in archivio: media voto non verificabile';
+    return 'media su sole ' + n + ' presenze: poco affidabile';
+  };
+
   // L'app puo' usare P/D/C/A, il listone usa POR/DIF/CEN/ATT.
   function normRole(r) {
     if (!r) return '';
@@ -59,6 +94,7 @@
 
   const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
   const round1 = (v) => Math.round(v * 10) / 10;
+  const round2 = (v) => Math.round(v * 100) / 100;
 
   // ------------------------------------------------------------------ agente
 
@@ -298,17 +334,202 @@
      * alta e prezzo basso. I listoni li sottovalutano perche' ragionano su una
      * lega senza modificatore difesa.
      */
-    modificatoreBargains(availables, limit) {
+    modificatoreBargains(availables, limit, team, allPlayers) {
       if (!this.defenseModifier) return [];
-      return availables
-        .filter((p) => p.modBargain)
-        .sort((a, b) => (b.modMediaVoto || 0) - (a.modMediaVoto || 0))
-        .slice(0, limit || 12)
-        .map((p) => {
-          const c = this.playerCard(p);
-          c.perche = p.modBargainNote;
-          return c;
-        });
+      const lista = availables
+        // Un'occasione da modificatore si fonda sulla media voto: se la
+        // media viene da poche partite, l'occasione non esiste.
+        .filter((p) => p.modBargain && affidabilita(p) !== 'inaffidabile')
+        .sort((a, b) => (b.modMediaVoto || 0) - (a.modMediaVoto || 0));
+
+      // Se conosco la rosa, un "affare" che non entra fra i migliori 3 non
+      // e' un affare: il modificatore guarda il blocco, non il singolo.
+      const conBlocco = [];
+      const stato = team ? this.modificatoreAttuale(team, allPlayers) : null;
+      lista.forEach((p) => {
+        if (conBlocco.length >= (limit || 12)) return;
+        const c = this.playerCard(p);
+        c.perche = p.modBargainNote;
+        const av = avvisoCampione(p);
+        if (av) c.perche = c.perche + ' ATTENZIONE: ' + av + '.';
+
+        if (stato && stato.completo) {
+          const imp = this.impattoSulModificatore(p, team, allPlayers);
+          if (imp && imp.applicabile) {
+            c.impattoSulMioBlocco = imp.nota;
+            c.miMigliora = imp.variazioneMedia > 0;
+            // Chi non tocca il blocco resta fuori: e' rumore in asta.
+            if (imp.variazioneMedia === 0) return;
+          }
+        }
+        conBlocco.push(c);
+      });
+      return conBlocco;
+    }
+
+    /**
+     * MODIFICATORE DIFESA: dove sei adesso.
+     *
+     * Il modificatore non e' una proprieta' dei singoli giocatori ma del
+     * BLOCCO schierato: media fra il portiere e i migliori 3 difensori.
+     * Per questo un secondo portiere forte non serve a niente, e il quinto
+     * difensore buono nemmeno: contano solo i primi tre.
+     *
+     * Restituisce la media attuale, lo scaglione raggiunto e quanto manca
+     * al successivo.
+     */
+    modificatoreAttuale(team, allPlayers) {
+      if (!this.defenseModifier) return null;
+      const players = (team && team.players) || [];
+      const pool = allPlayers || [];
+
+      // La rosa salva pochi campi: recupero la media voto dal listone.
+      const arricchisci = (p) => {
+        const full = pool.find((x) => x.id === p.id) || {};
+        return {
+          nome: p.name,
+          mv: full.mvStorica != null ? full.mvStorica : null,
+          presenze: presenzeTotali(full),
+          affidabilita: affidabilita(full)
+        };
+      };
+
+      const portieri = players.filter((p) => normRole(p.role) === 'POR')
+        .map(arricchisci).filter((p) => p.mv != null)
+        .sort((a, b) => b.mv - a.mv);
+      const difensori = players.filter((p) => normRole(p.role) === 'DIF')
+        .map(arricchisci).filter((p) => p.mv != null)
+        .sort((a, b) => b.mv - a.mv);
+
+      const por = portieri[0] || null;
+      const primi3 = difensori.slice(0, 3);
+      const completo = !!por && primi3.length === 3;
+
+      const media = completo
+        ? (por.mv + primi3.reduce((a, d) => a + d.mv, 0)) / 4
+        : null;
+
+      // Scala bonus della lega
+      const SCALA = [
+        { soglia: 7.00, bonus: 3 },   { soglia: 6.75, bonus: 2.5 },
+        { soglia: 6.50, bonus: 2 },   { soglia: 6.25, bonus: 1.5 },
+        { soglia: 6.00, bonus: 1 }
+      ];
+      const scaglione = media == null ? null
+        : (SCALA.find((s) => media >= s.soglia) || { soglia: null, bonus: 0 });
+      const prossimo = media == null ? null
+        : SCALA.slice().reverse().find((s) => s.soglia > media) || null;
+
+      // Quanto dovrebbe valere un difensore per farmi salire di scaglione:
+      // deve sostituire il peggiore dei miei primi 3.
+      let mvRichiesta = null;
+      if (completo && prossimo) {
+        const peggiore = primi3[primi3.length - 1].mv;
+        const sommaAltri = por.mv + primi3.slice(0, 2).reduce((a, d) => a + d.mv, 0);
+        mvRichiesta = round2(prossimo.soglia * 4 - sommaAltri);
+        if (mvRichiesta <= peggiore) mvRichiesta = null; // gia' raggiungibile
+      }
+
+      const debole = primi3.filter((d) => d.affidabilita === 'inaffidabile');
+
+      return {
+        completo: completo,
+        portiere: por,
+        migliori3Difensori: primi3,
+        mediaAttuale: media == null ? null : round2(media),
+        bonusAttuale: scaglione ? scaglione.bonus : null,
+        sogliaRaggiunta: scaglione ? scaglione.soglia : null,
+        prossimaSoglia: prossimo ? prossimo.soglia : null,
+        bonusProssimo: prossimo ? prossimo.bonus : null,
+        distanzaDallaProssima: (media != null && prossimo)
+          ? round2(prossimo.soglia - media) : null,
+        mediaVotoRichiestaPerSalire: mvRichiesta,
+        avvisoDatiDeboli: debole.length
+          ? debole.map((d) => d.nome).join(', ') +
+            ': media voto su poche partite, il calcolo e\' incerto.'
+          : null,
+        nota: !completo
+          ? 'Servono un portiere e almeno 3 difensori con storico per ' +
+            'calcolare il modificatore.'
+          : (prossimo
+              ? 'Sei a ' + round2(media) + ' (bonus ' + scaglione.bonus +
+                '). Ti mancano ' + round2(prossimo.soglia - media) +
+                ' di media per il bonus ' + prossimo.bonus + '.' +
+                (mvRichiesta
+                  ? ' Servirebbe un difensore da media voto ' + mvRichiesta +
+                    ' al posto del tuo terzo.'
+                  : '')
+              : 'Sei al massimo scaglione: bonus ' + scaglione.bonus + '.')
+      };
+    }
+
+    /**
+     * Quanto sposterebbe il modificatore l'acquisto di questo giocatore.
+     * E' la domanda vera in fase difensori: non "quanto vale" ma
+     * "quanto cambia il mio blocco".
+     */
+    impattoSulModificatore(player, team, allPlayers) {
+      if (!this.defenseModifier) return null;
+      const role = normRole(player.role);
+      if (role !== 'DIF' && role !== 'POR') return null;
+
+      const prima = this.modificatoreAttuale(team, allPlayers);
+      if (!prima) return null;
+
+      const mv = player.mvStorica;
+      if (mv == null) {
+        return { applicabile: false,
+                 nota: 'Nessuno storico per ' + player.name + ': impatto non calcolabile.' };
+      }
+
+      // Simulo la rosa con il giocatore dentro
+      const finto = { players: ((team && team.players) || []).concat([
+        { id: player.id, name: player.name, role: role }
+      ])};
+      const poolConLui = (allPlayers || []).some((x) => x.id === player.id)
+        ? allPlayers : (allPlayers || []).concat([player]);
+      const dopo = this.modificatoreAttuale(finto, poolConLui);
+
+      const delta = (dopo.mediaAttuale != null && prima.mediaAttuale != null)
+        ? round2(dopo.mediaAttuale - prima.mediaAttuale) : null;
+      const deltaBonus = (dopo.bonusAttuale != null && prima.bonusAttuale != null)
+        ? round2(dopo.bonusAttuale - prima.bonusAttuale) : null;
+
+      let nota;
+      if (!prima.completo && dopo.completo) {
+        nota = 'Completa il blocco: media ' + dopo.mediaAttuale +
+               ', bonus ' + dopo.bonusAttuale + '.';
+      } else if (delta === null) {
+        nota = 'Blocco ancora incompleto: impatto non misurabile.';
+      } else if (delta === 0) {
+        nota = 'Non entra fra i migliori 3: nessun effetto sul modificatore. ' +
+               'Come difensore da modificatore non ti serve.';
+      } else if (deltaBonus > 0) {
+        nota = 'Ti fa salire di scaglione: media da ' + prima.mediaAttuale +
+               ' a ' + dopo.mediaAttuale + ', bonus da ' + prima.bonusAttuale +
+               ' a ' + dopo.bonusAttuale + '. Vale un rilancio.';
+      } else {
+        nota = 'Alza la media da ' + prima.mediaAttuale + ' a ' + dopo.mediaAttuale +
+               ' ma resta nello stesso scaglione (bonus ' + dopo.bonusAttuale + ').';
+      }
+
+      const av = avvisoCampione(player);
+      if (av) nota += ' Cautela: ' + av + '.';
+
+      return {
+        applicabile: true,
+        giocatore: player.name,
+        mediaPrima: prima.mediaAttuale,
+        mediaDopo: dopo.mediaAttuale,
+        variazioneMedia: delta,
+        bonusPrima: prima.bonusAttuale,
+        bonusDopo: dopo.bonusAttuale,
+        variazioneBonus: deltaBonus,
+        entraNeiMigliori3: dopo.migliori3Difensori
+          .some((d) => d.nome === player.name) ||
+          (dopo.portiere && dopo.portiere.nome === player.name),
+        nota: nota
+      };
     }
 
     /** Rigoristi e specialisti dei piazzati liberi (gol e rigore valgono 3). */
@@ -399,6 +620,9 @@
         fantamediaStorica: player.fmStorica,
         mediaVotoStorica: player.mvStorica,
         presenzeMedie: player.pvMedia,
+        presenzeTotali: presenzeTotali(player),
+        affidabilitaDato: affidabilita(player),
+        avvisoCampione: avvisoCampione(player),
         componentiQualita: player.qualityBreakdown
       };
       c.giudizio = this.giudizio(player);
@@ -419,6 +643,10 @@
         parti.push('Il mercato lo paga intorno a ' + p.pma + '.');
       }
       if (p.modBargain) parti.push(p.modBargainNote + '.');
+      const avvC = avvisoCampione(p);
+      if (avvC && (p.mvStorica != null || p.fmStorica != null)) {
+        parti.push('Cautela sui numeri: ' + avvC + '.');
+      }
       if ((p.setPieces || []).length) parti.push('Batte: ' + p.setPieces.join(', ') + '.');
       if (p.trend === 'CALANTE') parti.push('Rendimento in calo nelle ultime stagioni.');
       if (p.trend === 'CRESCENTE') parti.push('In crescita nelle ultime stagioni.');
@@ -1045,7 +1273,14 @@
         consiglio: this.consiglioPrincipale(team, strategyKey, inFase, fase),
         obiettivi: this.bestValue(inFase, { maxSpesa: tettoObiettivi, limit: 8 }),
         notaObiettivi: notaObiettivi,
-        occasioniModificatore: this.modificatoreBargains(inFase, 8),
+        modificatore: this.modificatoreAttuale(team, allPlayers),
+        // La scarsita' descrive il mercato, non la mia situazione: se mi
+        // restano solo slot da panchina, l'asta al rialzo sui top non mi
+        // riguarda e "non temporeggiare" sarebbe un consiglio sbagliato.
+        scarsitaMiRiguarda: !(bf && bf.fase &&
+                              bf.titolariMancanti === 0 &&
+                              bf.panchinariMancanti > 0),
+        occasioniModificatore: this.modificatoreBargains(inFase, 8, team, allPlayers),
         specialistiPiazzati: this.specialisti(inFase, 6),
         trappole: this.trappole(inFase, 6),
         mercato: this.pressioneMercato(allTeams, mine),
@@ -1099,6 +1334,24 @@
     if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
     const t = getTeams();
     return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy());
+  }
+
+  /** Dove sono col modificatore difesa: portiere + migliori 3 difensori. */
+  function modificatore() {
+    const t = getTeams();
+    const m = AI_AGENT.modificatoreAttuale(t[myTeamNum()], getPlayers());
+    if (!m) return { errore: 'Modificatore difesa non attivo in questa lega.' };
+    return m;
+  }
+
+  /** Quanto sposterebbe il mio modificatore comprare questo giocatore. */
+  function impattoModificatore(nome) {
+    const p = AI_AGENT.findPlayer(getPlayers(), nome);
+    if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
+    const t = getTeams();
+    const i = AI_AGENT.impattoSulModificatore(p, t[myTeamNum()], getPlayers());
+    if (!i) return { errore: p.name + ' non e\' POR ne\' DIF: non tocca il modificatore.' };
+    return i;
   }
 
   /** Segna un comportamento osservato su una squadra avversaria. */
@@ -1184,7 +1437,13 @@
         const pf = sc.liberiPerFascia || {};
         L.push('- Liberi per fascia: ' +
                TIER_ORDER.map((t) => t + ':' + (pf[t] || 0)).join('  '));
-        if (sc.nota) L.push('- ' + sc.nota);
+        if (sc.nota) {
+          L.push('- ' + sc.nota);
+          if (r.scarsitaMiRiguarda === false) {
+            L.push('  (non ti riguarda: i tuoi titolari in questo reparto sono gia\' presi, ' +
+                   'ti restano solo slot da panchina)');
+          }
+        }
       }
       const bf = r.budgetFase || {};
       if (bf.fase) {
@@ -1235,14 +1494,42 @@
       if (r.notaObiettivi) L.push('(' + r.notaObiettivi + ')');
       r.obiettivi.forEach((c) => L.push(card(c)));
     }
+    // Stato del modificatore: dove sono adesso col blocco difensivo
+    const md = r.modificatore;
+    if (md) {
+      L.push('');
+      L.push('MODIFICATORE DIFESA — IL MIO BLOCCO');
+      if (!md.completo) {
+        L.push('- ' + md.nota);
+        if (md.portiere) L.push('  portiere: ' + md.portiere.nome + ' (mv ' + md.portiere.mv + ')');
+        md.migliori3Difensori.forEach((d) =>
+          L.push('  difensore: ' + d.nome + ' (mv ' + d.mv + ')'));
+      } else {
+        L.push('- ' + md.portiere.nome + ' (POR, mv ' + md.portiere.mv + ') + ' +
+               md.migliori3Difensori.map((d) => d.nome + ' ' + d.mv).join(', '));
+        L.push('- Media ' + md.mediaAttuale + ' -> bonus ' + md.bonusAttuale +
+               ' a giornata');
+        if (md.prossimaSoglia) {
+          L.push('- Prossimo scaglione a ' + md.prossimaSoglia + ' (bonus ' +
+                 md.bonusProssimo + '): mancano ' + md.distanzaDallaProssima +
+                 (md.mediaVotoRichiestaPerSalire
+                   ? '. Serve un difensore da mv ' + md.mediaVotoRichiestaPerSalire +
+                     ' al posto del terzo'
+                   : ''));
+        }
+        if (md.avvisoDatiDeboli) L.push('- ⚠️ ' + md.avvisoDatiDeboli);
+      }
+    }
     if (r.occasioniModificatore.length) {
       L.push('');
       L.push('OCCASIONI DA MODIFICATORE DIFESA');
       L.push('(media voto alta a prezzo basso: i listoni le sottovalutano perche');
       L.push('non conoscono le regole di questa lega)');
-      r.occasioniModificatore.forEach((c) =>
+      r.occasioniModificatore.forEach((c) => {
         L.push('- ' + c.nome + ' (' + c.ruolo + ', ' + c.squadra + ') media voto ' +
-               c.mediaVoto + ', mercato ~' + c.prezzoMercato + ' — ' + c.perche));
+               c.mediaVoto + ', mercato ~' + c.prezzoMercato + ' — ' + c.perche);
+        if (c.impattoSulMioBlocco) L.push('  SUL MIO BLOCCO: ' + c.impattoSulMioBlocco);
+      });
     }
     if (r.specialistiPiazzati.length) {
       L.push('');
@@ -1309,6 +1596,8 @@
     getAIContext: getAIContext,
     formatReportForClaude: formatReportForClaude,
     quantoOffrirePer: quantoOffrirePer,
+    modificatore: modificatore,
+    impattoModificatore: impattoModificatore,
     scheda: scheda,
     chiamaOAspetta: chiamaOAspetta,
     faseAsta: faseAsta,
