@@ -635,15 +635,37 @@
 
       if (urgente) {
         const a = analysis[urgente];
+
+        // Stesso filtro degli obiettivi: il consiglio deve rispettare il
+        // budget dello slot in corso, non tutta la cassa disponibile.
+        const bf = this.budgetFase(team, strategyKey, null, urgente);
+        let tetto = st.maxOffertaOra;
+        let qualeSlot = '';
+        if (bf && bf.fase === urgente) {
+          if (bf.titolariMancanti > 0 && bf.budgetPerTitolare > 0) {
+            tetto = Math.min(tetto, Math.ceil(bf.budgetPerTitolare * 1.4));
+            qualeSlot = ' Ti restano ' + bf.titolariMancanti +
+                        ' slot da titolare (~' + bf.budgetPerTitolare +
+                        ' crediti l\'uno) e ' + bf.panchinariMancanti +
+                        ' da panchina (1-2 crediti).';
+          } else if (bf.panchinariMancanti > 0) {
+            tetto = Math.min(tetto, 3);
+            qualeSlot = ' I titolari li hai gia\' presi: restano ' +
+                        bf.panchinariMancanti +
+                        ' slot da panchina, da chiudere a 1-2 crediti.';
+          }
+        }
+
         const cand = this.bestValue(availables, {
-          role: urgente, maxSpesa: st.maxOffertaOra, limit: 3
+          role: urgente, maxSpesa: tetto, limit: 3
         });
         const nomi = cand.map((c) => c.nome + ' (max ' + c.prezzoMaxConsigliato + ')')
                          .join(', ');
         return {
           icon: '\u{1F3AF}', titolo: 'PRIORITA: ' + urgente,
           testo: 'Ti mancano ' + a.needed + ' ' + urgente + ' con ' +
-                 a.budgetResiduoRuolo + ' crediti di budget di ruolo. ' +
+                 a.budgetResiduoRuolo + ' crediti di budget di ruolo.' +
+                 qualeSlot + ' ' +
                  (nomi ? 'Obiettivi con buon rapporto qualita/prezzo: ' + nomi + '.'
                        : 'Nessun candidato in questa fascia di prezzo tra i disponibili.')
         };
