@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asta Fantacalcio v3.9.8</title>
+    <title>Asta Fantacalcio v3.9.9</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=3980">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=3981">
 </head>
 <body>
     <div class="container">
         <header>
             <h1>Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.8</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
             </div>
         </header>
@@ -73,10 +73,11 @@
                 <div class="filter-item">
                     <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Ordina</label>
                     <div class="filter-buttons">
-                        <button class="sort-btn active" onclick="toggleSortOrder('name-asc', this)">A-Z</button>
-                        <button class="sort-btn" onclick="toggleSortOrder('name-desc', this)">Z-A</button>
-                        <button class="sort-btn" onclick="toggleSortOrder('tier', this)">TIER</button>
-                        <button class="sort-btn" onclick="toggleSortOrder('value', this)">VALORE</button>
+                        <button class="sort-toggle" id="sortAlpha" onclick="setSortMode('alpha')">
+                            A-Z <span id="alphaDir">↑</span>
+                        </button>
+                        <button class="sort-toggle" id="sortTier" onclick="setSortMode('tier')">TIER</button>
+                        <button class="sort-toggle" id="sortValue" onclick="setSortMode('value')">VALORE</button>
                     </div>
                 </div>
             </div>
@@ -256,8 +257,8 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=3980"></script>
-    <script src="fantacalcio_app.js?v=3980"></script>
-    <script src="fantacalcio_ai.js?v=3980"></script>
+    <script src="players_data.js?v=3981"></script>
+    <script src="fantacalcio_app.js?v=3981"></script>
+    <script src="fantacalcio_ai.js?v=3981"></script>
 </body>
 </html>
