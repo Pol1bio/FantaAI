@@ -346,18 +346,43 @@
     // --------------------------------------------------------- suggerimenti
 
     /** Migliori rapporti qualita/prezzo tra i giocatori ancora liberi. */
+    /**
+     * Obiettivi consigliati.
+     *
+     * Non usa piu' valueScore del listone (inaffidabile: escludeva
+     * Buongiorno, fra i difensori piu' convenienti, perche' gli assegna 18).
+     * Ordina sulla convenienza ricalcolata, scegliendo il criterio in base
+     * al tipo di slot: sui titolari conta la resa assoluta, sui panchinari
+     * la resa per credito.
+     */
     bestValue(availables, opts) {
       const o = opts || {};
-      const minQ = o.minQuality !== undefined ? o.minQuality : 55;
       const maxSpesa = o.maxSpesa !== undefined ? o.maxSpesa : null;
       const role = o.role ? normRole(o.role) : null;
-      return availables
-        .filter((p) => (p.qualityScore || 0) >= minQ && (p.valueScore || 0) >= 60)
+      const perEfficienza = o.criterio === 'efficienza';
+
+      const candidati = availables
         .filter((p) => !role || normRole(p.role) === role)
         .filter((p) => maxSpesa === null || num(p.pma) === null || p.pma <= maxSpesa)
-        .sort((a, b) => (b.valueScore || 0) - (a.valueScore || 0))
+        // Chi non gioca non rende, per quanto costi poco.
+        .filter((p) => (p.expectedTitolarita || 0) >= 50);
+
+      const conv = new Map();
+      candidati.forEach((p) => conv.set(p.id, this.convenienza(p, candidati)));
+
+      return candidati
+        .sort((a, b) => {
+          const ca = conv.get(a.id), cb = conv.get(b.id);
+          return perEfficienza
+            ? cb.puntiPerCredito - ca.puntiPerCredito
+            : cb.puntiAttesi - ca.puntiAttesi;
+        })
         .slice(0, o.limit || 8)
-        .map((p) => this.playerCard(p));
+        .map((p) => {
+          const c = this.playerCard(p);
+          c.convenienza = conv.get(p.id);
+          return c;
+        });
     }
 
     /** I piu' forti disponibili in un ruolo, entro un tetto di spesa. */
@@ -644,6 +669,69 @@
       };
     }
 
+    /**
+     * CONVENIENZA, ricalcolata sulle regole di questa lega.
+     *
+     * Il campo valueScore del listone non e' affidabile: comprime il 57%
+     * dei giocatori fra 20 e 40, ne satura 34 a 100 esatto, e assegna 18 a
+     * Buongiorno contro 95.5 a Carlos Augusto, che a parita' di prezzo
+     * rendono uguale. Qui si ricalcola da zero.
+     *
+     * Due misure diverse, perche' servono a decisioni diverse:
+     *  - puntiAttesi: quanto rende in stagione. Conta sugli slot da
+     *    TITOLARE, dove il budget c'e' e si cerca il massimo assoluto.
+     *  - puntiPerCredito: quanto rende per credito speso. Conta sugli slot
+     *    da PANCHINA e quando il budget stringe.
+     *
+     * Espressa come posizione nel ruolo ("4o fra i difensori liberi")
+     * invece che come punteggio 0-100, che non dice nulla da solo.
+     */
+    convenienza(player, availables) {
+      const stima = (p) => {
+        const fm = p.fmStorica || p.expectedFantamedia || 6;
+        const tit = (p.expectedTitolarita || 0) / 100;
+        /**
+         * Temperamento per campione piccolo.
+         *
+         * Una fantamedia costruita su 5 partite fortunate batte quella di
+         * chi ne ha giocate 120, e senza correzione i giocatori senza
+         * storico occupano tutte le prime posizioni. Si tira la stima
+         * verso il 6 di base in proporzione a quanto poco sappiamo:
+         * con 50+ presenze si crede al dato per intero, con 0 non gli si
+         * crede affatto. E' un accorgimento standard, non una penalita'
+         * arbitraria: la media di pochi dati va regredita verso la media
+         * generale.
+         */
+        const n = presenzeTotali(p);
+        const fiducia = Math.min(1, n / PRESENZE_AFFIDABILI);
+        const fmTemperata = 6 + (fm - 6) * fiducia;
+        return (fmTemperata - 6) * 38 * tit;
+      };
+      const punti = stima(player);
+      const perCredito = punti / Math.max(1, player.pma || 1);
+
+      const role = normRole(player.role);
+      const pari = (availables || []).filter((p) => normRole(p.role) === role);
+      const posPunti = pari.filter((p) => stima(p) > punti).length + 1;
+      const posEff = pari.filter((p) =>
+        stima(p) / Math.max(1, p.pma || 1) > perCredito).length + 1;
+
+      const aff = affidabilita(player);
+      return {
+        puntiAttesi: round1(punti),
+        puntiPerCredito: round2(perCredito),
+        posizionePerResa: posPunti,
+        posizionePerEfficienza: posEff,
+        suQuanti: pari.length,
+        affidabilita: aff,
+        sintesi: pari.length
+          ? posPunti + 'o per resa e ' + posEff + 'o per efficienza fra i ' +
+            pari.length + ' ' + role + ' liberi' +
+            (aff === 'inaffidabile' ? ' (ma i numeri vengono da poche partite)' : '')
+          : null
+      };
+    }
+
     /** Rigoristi e specialisti dei piazzati liberi (gol e rigore valgono 3). */
     specialisti(availables, limit) {
       const P = this.punteggi;
@@ -892,6 +980,20 @@
           ? 'Tetto sensato sotto 1 credito: non vale la pena, se non come ' +
             'riempitivo obbligato a 1.'
           : null,
+        /**
+         * Perche' il tetto e' cosi' basso rispetto al mercato.
+         * Il modello sconta pesantemente chi ha poco storico: e' prudenza,
+         * non un giudizio sul giocatore. Va detto, altrimenti si perdono
+         * occasioni su giovani che il mercato paga e che possono valere.
+         */
+        perTettoBasso: (player.pma > 3 && offerta < player.pma * 0.4)
+          ? (presenzeTotali(player) < PRESENZE_MINIME
+              ? 'Tetto molto sotto il mercato (' + player.pma + ') perche\' non ' +
+                'ha storico utilizzabile in Serie A: il modello e\' prudente per ' +
+                'forza. Se lo conosci e credi valga di piu\', fidati del tuo occhio.'
+              : 'Tetto molto sotto il mercato (' + player.pma + '): i suoi numeri ' +
+                'non giustificano il prezzo di listino.')
+          : null,
         vincoloAttivo: vincolante.fonte,
         sogliaRendimento: sogliaRendimento,
         tuttiILimiti: limiti,
@@ -1061,7 +1163,9 @@
         }
 
         const cand = this.bestValue(availables, {
-          role: urgente, maxSpesa: tetto, limit: 3
+          role: urgente, maxSpesa: tetto, limit: 3,
+          criterio: (bf && bf.fase === urgente && bf.titolariMancanti === 0)
+                    ? 'efficienza' : 'resa'
         });
         const nomi = cand.map((c) => c.nome + ' (max ' + c.prezzoMaxConsigliato + ')')
                          .join(', ');
@@ -1447,7 +1551,11 @@
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
         consiglio: this.consiglioPrincipale(team, strategyKey, inFase, fase),
-        obiettivi: this.bestValue(inFase, { maxSpesa: tettoObiettivi, limit: 8 }),
+        obiettivi: this.bestValue(inFase, {
+          maxSpesa: tettoObiettivi, limit: 8,
+          // Sui titolari conta la resa assoluta, sui panchinari l'efficienza
+          criterio: (bf && bf.fase && bf.titolariMancanti === 0) ? 'efficienza' : 'resa'
+        }),
         notaObiettivi: notaObiettivi,
         modificatore: this.modificatoreAttuale(team, allPlayers),
         profiloRischio: this.profiloRischio(team, allTeams, mine),
@@ -1666,7 +1774,7 @@
 
     const card = (c) =>
       '- ' + c.nome + ' (' + c.ruolo + ', ' + c.squadra + ') tier ' + c.tier +
-      ' | qualita ' + c.qualita + ' convenienza ' + c.convenienza +
+      ' | qualita ' + c.qualita +
       ' | mercato ~' + c.prezzoMercato + ', non superare ' + c.prezzoMaxConsigliato +
       (c.piazzati.length ? ' | ' + c.piazzati.join(', ') : '') +
       (c.rischi.length ? ' | rischi: ' + c.rischi.join('; ') : '');
@@ -1675,7 +1783,10 @@
       L.push('');
       L.push('OBIETTIVI ALLA MIA PORTATA' + (r.fase && r.fase.fase ? ' (reparto ' + r.fase.fase + ', in asta ora)' : ''));
       if (r.notaObiettivi) L.push('(' + r.notaObiettivi + ')');
-      r.obiettivi.forEach((c) => L.push(card(c)));
+      r.obiettivi.forEach((c) => {
+        L.push(card(c));
+        if (c.convenienza && c.convenienza.sintesi) L.push('  ' + c.convenienza.sintesi);
+      });
     }
     // Scontri diretti: quanto conviene rischiare adesso
     const pr = r.profiloRischio;
