@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.12 - APP LOGIC
+        // FANTACALCIO v3.9.9.13 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1719,4 +1719,17 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 filterAvailable();
             }
             aggiornaBadgeReport();
+
+            /**
+             * Titolo dinamico in base al modulo storico caricato.
+             * Ogni lega ha il proprio file storico_<nome>.js con un campo
+             * "lega": se e' quello di Fantalissandria, il titolo lo riflette;
+             * senza nessun modulo storico (o con quello di un'altra lega,
+             * es. Lega1996 in futuro) resta il nome generico.
+             */
+            const titolo = document.getElementById('appTitle');
+            if (titolo && typeof STORICO_MANAGER !== 'undefined' &&
+                STORICO_MANAGER.lega === 'Fantalissandria') {
+                titolo.textContent = 'Asta Fantalisandria';
+            }
         });
