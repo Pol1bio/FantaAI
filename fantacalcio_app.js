@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.10 - APP LOGIC
+        // FANTACALCIO v3.9.9.10b - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -321,12 +321,10 @@
                 }
             }
             
-            // Assegna nomi alle 8 squadre
-            for (let i = 1; i <= 8; i++) {
-                teams[i].name = nomi[i - 1];
-            }
+            // Assegna nomi alle 8 squadre, ripartendo da rose vuote
+            initializeTeams(nomi);
             teamNamesConfirmed = true;
-            
+
             // Genera sorteggio casuale dell'ordine di estrazione
             const ordine = Array.from({length: 8}, (_, i) => i + 1);
             for (let i = ordine.length - 1; i > 0; i--) {
@@ -335,18 +333,39 @@
             }
             teamOrder = ordine;
             orderConfirmed = true;
-            
+
+            /**
+             * Salvare PRIMA di ricaricare.
+             * loadData() rilegge tutto da localStorage: se i nomi non sono
+             * ancora stati scritti li' sopra, sovrascrive quelli appena
+             * generati con i vecchi. Era questo il bug per cui i nomi
+             * casuali non comparivano nei bottoni e nella panoramica.
+             */
+            saveData();
+            localStorage.setItem('fantacalcio_config_completed', 'true');
+
+            // Nuova asta di prova: i report della precedente non servono piu'
+            localStorage.removeItem('astaReports');
+            const rb = document.getElementById('reportLiveBody');
+            if (rb) rb.innerHTML = '';
+            const rc = document.getElementById('reportLiveCount');
+            if (rc) { rc.textContent = '0'; rc.style.display = 'none'; }
+            conversationHistory = [];
+
             // Mostra il setup completato
             document.getElementById('setupNamesSection').style.display = 'none';
             document.getElementById('setupSection').style.display = 'none';
-            document.getElementById('orderDisplay').style.display = 'block';
-            document.getElementById('orderDisplay').classList.add('active');
-            
+            const od = document.getElementById('orderDisplay');
+            if (od) { od.style.display = 'block'; od.classList.add('active'); }
+            const mine = document.getElementById('myTeamName');
+            if (mine) mine.textContent = teams[1].name;
+
             initTeamButtons();
             renderTeamsOverview();
-            loadData();
             updateDisplay();
-            
+            filterAvailable();
+            renderOrderDisplay();
+
             showMessage('✨ ' + nomi.join(', ') + ' — Pronto a giocare!', 'success');
         }
         function initSetup() {
@@ -1160,6 +1179,20 @@
 
         window.toggleReportLive = toggleReportLive;
         window.toggleReportCard = toggleReportCard;
+        /** Svuota i report senza toccare l'asta in corso. */
+        function svuotaReport() {
+            const n = getReports().length;
+            if (!n) { showMessage('Non ci sono report da cancellare.', 'success'); return; }
+            if (!confirm('Cancellare i ' + n + ' report salvati? L\'asta non viene toccata.')) return;
+            localStorage.removeItem('astaReports');
+            const b = document.getElementById('reportLiveBody');
+            if (b) b.innerHTML = '';
+            aggiornaBadgeReport();
+            if (reportLiveAperto) renderReportLiveBody();
+            showMessage('Report cancellati.', 'success');
+        }
+
+        window.svuotaReport = svuotaReport;
         window.renderReportLiveBody = renderReportLiveBody;
 
         function removeFromMySquad(playerId) {
@@ -1650,6 +1683,16 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 timestamp,
                 receivedAt: new Date().toISOString()
             });
+            /**
+             * Tetto agli ultimi 20.
+             * Senza limite i report si accumulano per sempre, comprese le
+             * prove vecchie, e il pannello diventa illeggibile. In asta
+             * servono gli ultimi, non l'archivio completo.
+             */
+            const MAX_REPORT = 20;
+            if (reports.length > MAX_REPORT) {
+                reports = reports.slice(-MAX_REPORT);
+            }
             localStorage.setItem('astaReports', JSON.stringify(reports));
 
             // Aggiorna il pannello Report Live
