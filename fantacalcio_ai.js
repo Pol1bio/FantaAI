@@ -759,6 +759,194 @@
       };
     }
 
+    /**
+     * COME STA ANDANDO IL MERCATO, e come approfittarne.
+     *
+     * L'asta e' sequenziale per reparto, quindi mentre si comprano portieri
+     * e difensori si vedono gia' due segnali che dicono cosa succedera' in
+     * attacco:
+     *
+     *  1) INFLAZIONE. Quanto si sta pagando sopra o sotto il listino, in
+     *     ogni reparto gia' battuto. Se i difensori vanno al 130% del
+     *     listino, chi li ha comprati ha meno crediti per l'attacco.
+     *
+     *  2) LIQUIDITA' TRATTENUTA. Quanti crediti hanno in mano gli avversari
+     *     rispetto agli slot che devono ancora riempire. Chi tiene molto
+     *     sta aspettando gli attaccanti: l'asta in attacco sara' cara, e i
+     *     reparti intermedi si prendono a poco.
+     *
+     * E' esattamente il segnale difficile da leggere in diretta, perche'
+     * richiede di sommare a mente 8 budget mentre si sta rilanciando.
+     */
+    mercatoPerReparto(allTeams, allPlayers, mineKey) {
+      const pool = allPlayers || [];
+      const listino = new Map();
+      pool.forEach((p) => { if (p.pma != null) listino.set(p.id, p.pma); });
+
+      const perRuolo = {};
+      ROLES.forEach((r) => { perRuolo[r] = { pagato: 0, listino: 0, n: 0 }; });
+
+      Object.values(allTeams || {}).forEach((t) => {
+        ((t && t.players) || []).forEach((g) => {
+          const r = normRole(g.role);
+          const l = listino.get(g.id);
+          if (!r || l == null) return;
+          perRuolo[r].pagato += Number(g.price) || 0;
+          perRuolo[r].listino += l;
+          perRuolo[r].n += 1;
+        });
+      });
+
+      const inflazione = {};
+      ROLES.forEach((r) => {
+        const d = perRuolo[r];
+        inflazione[r] = (d.n >= 5 && d.listino > 0)
+          ? { rapporto: round2(d.pagato / d.listino), giocatori: d.n,
+              spesoTotale: round1(d.pagato) }
+          : null;
+      });
+
+      // Liquidita' trattenuta dagli avversari
+      const liquidi = [];
+      Object.keys(allTeams || {}).forEach((k) => {
+        if (String(k) === String(mineKey)) return;
+        const t = allTeams[k];
+        const mancanti = 25 - (((t && t.players) || []).length);
+        if (mancanti <= 0) return;
+        liquidi.push({
+          squadra: (t && t.name) || k,
+          residuo: (t && t.budget) || 0,
+          slotMancanti: mancanti,
+          perSlot: round1(((t && t.budget) || 0) / mancanti)
+        });
+      });
+      liquidi.sort((a, b) => b.perSlot - a.perSlot);
+      const mediaPerSlot = liquidi.length
+        ? liquidi.reduce((a, x) => a + x.perSlot, 0) / liquidi.length : 0;
+
+      // Quanti avversari stanno chiaramente tenendo i soldi
+      const affamati = liquidi.filter((x) => x.perSlot > mediaPerSlot * 1.3);
+
+      const letture = [];
+      ROLES.forEach((r) => {
+        const i = inflazione[r];
+        if (!i) return;
+        if (i.rapporto >= 1.15) {
+          letture.push('I ' + r + ' stanno andando al ' + Math.round(i.rapporto * 100) +
+            '% del listino: chi li ha presi ha meno crediti per i reparti successivi.');
+        } else if (i.rapporto <= 0.85) {
+          letture.push('I ' + r + ' vanno al ' + Math.round(i.rapporto * 100) +
+            '% del listino: il mercato li sta regalando.');
+        }
+      });
+      if (affamati.length >= 2) {
+        letture.push(affamati.length + ' avversari tengono molti crediti (' +
+          affamati.map((x) => x.squadra + ' ' + x.perSlot + '/slot').join(', ') +
+          '): stanno aspettando gli attaccanti. Nei reparti intermedi ' +
+          'troverai meno concorrenza, approfittane adesso.');
+      } else if (liquidi.length && mediaPerSlot < 8) {
+        letture.push('Gli avversari hanno poca cassa (' + round1(mediaPerSlot) +
+          ' a slot): in attacco ci sara\' meno concorrenza del solito, ' +
+          'puoi permetterti di aspettare.');
+      }
+
+      return {
+        inflazionePerReparto: inflazione,
+        liquiditaAvversari: liquidi.slice(0, 4),
+        mediaCreditiPerSlotAvversari: round1(mediaPerSlot),
+        avversariCheAspettano: affamati.length,
+        letture: letture
+      };
+    }
+
+    /**
+     * PASSO DI SPESA: rischio di restare con crediti in mano.
+     *
+     * Nell'asta sequenziale per reparto i crediti risparmiati in un reparto
+     * restano disponibili per i successivi, ma quelli che avanzano alla fine
+     * sono persi. Il problema non e' quasi mai una scelta: si subisce
+     * l'andamento, si tiene qualcosa "per sicurezza" e a fine asta resta
+     * una somma che non serve piu' a niente.
+     *
+     * Qui si proietta in avanti: ai prezzi correnti, quanto costera'
+     * riempire gli slot che restano? Se costa molto meno di quanto ho,
+     * il surplus va speso ORA, non alla fine, perche' nei reparti finali
+     * i giocatori buoni saranno gia' andati.
+     */
+    passoSpesa(team, strategyKey, allTeams, allPlayers) {
+      const st = this.rosterState(team);
+      if (st.slotMancanti <= 0) {
+        return { completo: true,
+                 nota: 'Rosa completa.' +
+                       (st.residuo > 0 ? ' Ti sono rimasti ' + st.residuo +
+                        ' crediti non spesi.' : '') };
+      }
+
+      const pool = allPlayers || [];
+      const presi = new Set();
+      Object.values(allTeams || {}).forEach((t) =>
+        ((t && t.players) || []).forEach((g) => presi.add(g.id)));
+      const liberi = pool.filter((p) => !presi.has(p.id));
+
+      // Costo realistico per completare: per ogni ruolo mancante prendo la
+      // mediana dei prezzi di chi e' ancora libero, non il minimo teorico.
+      const mediana = (arr) => {
+        if (!arr.length) return 1;
+        const a = arr.slice().sort((x, y) => x - y);
+        return a[Math.floor(a.length / 2)];
+      };
+      let costoStimato = 0;
+      const dettaglio = {};
+      const squadre = Object.keys(allTeams || {}).length || 8;
+      ROLES.forEach((r) => {
+        const mancano = Math.max(0, this.roleLimits[r] - st.countByRole[r]);
+        if (!mancano) { dettaglio[r] = 0; return; }
+        const titolari = Math.max(0, (this.slotTitolari[r] || 0) - st.countByRole[r]);
+        const panchina = mancano - titolari;
+
+        /**
+         * Gli slot da titolare non si riempiono con la mediana di tutti i
+         * liberi: quelli buoni se li contendono 8 squadre. Se mi mancano N
+         * titolari, i miei bersagli realistici stanno nei primi N x squadre
+         * giocatori per prezzo, e li' dentro paghero' intorno alla mediana.
+         */
+        const candidati = liberi
+          .filter((p) => normRole(p.role) === r && (p.expectedTitolarita || 0) >= 50)
+          .sort((a, b) => (b.pma || 0) - (a.pma || 0));
+        const fascia = candidati.slice(0, Math.max(1, titolari * squadre));
+        const med = titolari > 0 ? mediana(fascia.map((p) => p.pma || 1)) : 0;
+
+        const costo = titolari * med + panchina * this.prezzoPanchinaro;
+        dettaglio[r] = round1(costo);
+        costoStimato += costo;
+      });
+
+      const avanzo = st.residuo - costoStimato;
+      const rischio = avanzo > st.residuo * 0.15 && avanzo > 25;
+
+      return {
+        completo: false,
+        residuo: st.residuo,
+        slotMancanti: st.slotMancanti,
+        costoStimatoPerCompletare: round1(costoStimato),
+        avanzoPrevisto: round1(avanzo),
+        costoPerRuolo: dettaglio,
+        rischioCreditiInutilizzati: rischio,
+        nota: rischio
+          ? 'Ai prezzi correnti ti bastano ~' + Math.round(costoStimato) +
+            ' crediti per completare la rosa, ma ne hai ' + st.residuo +
+            '. Rischi di finire con ~' + Math.round(avanzo) + ' crediti in mano, ' +
+            'che sono persi. Alza le offerte ORA sui giocatori che vuoi ' +
+            'davvero: piu\' avanti resteranno solo gli scarti.'
+          : (avanzo < 0
+              ? 'Attenzione al contrario: ai prezzi correnti completare la rosa ' +
+                'costerebbe ~' + Math.round(costoStimato) + ' crediti e ne hai ' +
+                st.residuo + '. Devi risparmiare da qui in avanti.'
+              : 'Passo di spesa in equilibrio: ai prezzi correnti chiuderai ' +
+                'con circa ' + Math.round(Math.max(0, avanzo)) + ' crediti di margine.')
+      };
+    }
+
     /** Rigoristi e specialisti dei piazzati liberi (gol e rigore valgono 3). */
     specialisti(availables, limit) {
       const P = this.punteggi;
@@ -1011,35 +1199,34 @@
        *    la varianza aiuta chi insegue e danneggia chi guida. Quindi la
        *    decisione dipende dal profilo di rischio, non e' fissa.
        */
+      /**
+       * Le note che seguono AVVERTONO ma non tagliano l'offerta.
+       * Un tetto automatico su un giocatore che il mercato considera
+       * irrinunciabile fa perdere l'asta invece di farla vincere: la
+       * decisione resta all'utente, che conosce il campo meglio del modello.
+       */
       let cautela = null;
       const aff = affidabilita(player);
       if (aff !== 'solida' && offertaConsigliata > 20) {
         const n = presenzeTotali(player);
-        const fiducia = Math.max(0.35, Math.min(1, n / PRESENZE_AFFIDABILI));
-        const ridotta = Math.floor(offertaConsigliata * fiducia);
-        cautela = 'Solo ' + n + ' presenze in archivio: la sua media puo\' ' +
-          'essere un caso. Invece di ' + offertaConsigliata + ' non andrei ' +
-          'oltre ' + ridotta + '.';
-        offertaConsigliata = ridotta;
+        const prudente = Math.floor(offertaConsigliata *
+                                    Math.max(0.35, Math.min(1, n / PRESENZE_AFFIDABILI)));
+        cautela = 'Solo ' + n + ' presenze in archivio: la sua media puo\' essere ' +
+          'un caso. Un prezzo prudente sarebbe ' + prudente + ', ma se il mercato ' +
+          'lo considera sicuro il sovrapprezzo puo\' avere senso: decidi tu.';
       }
 
       if (role === 'ATT' && offertaConsigliata > 115) {
         const pr = allTeams ? this.profiloRischio(team, allTeams, mineKey, allPlayers) : null;
         const inseguo = pr && pr.valutabile && pr.posizione === 'sotto la media';
-        if (!inseguo) {
-          const prima = offertaConsigliata;
-          offertaConsigliata = 115;
-          cautela = (cautela ? cautela + ' Inoltre: ' : '') +
-            'sopra i 115 crediti il rendimento marginale di una punta scende ' +
-            'sotto quello di rinforzare un altro reparto' +
-            (pr && pr.valutabile ? ' e non sei sotto la media della lega, ' +
-              'quindi la varianza non ti serve' : '') +
-            ': mi fermerei a 115 invece di ' + prima + '.';
-        } else {
-          cautela = 'Sopra i 115 crediti il rendimento cala, ma sei sotto la ' +
-            'media della lega: a scontri diretti concentrare su un fuoriclasse ' +
-            'e\' la scelta giusta. Puoi arrivare a ' + offertaConsigliata + '.';
-        }
+        cautela = (cautela ? cautela + ' ' : '') +
+          (inseguo
+            ? 'Sopra i 115 crediti il rendimento marginale cala, ma sei sotto la ' +
+              'media della lega: a scontri diretti concentrare su un fuoriclasse ' +
+              'e\' la scelta giusta.'
+            : 'Sopra i 115 crediti ogni credito in piu\' rende meno che altrove. ' +
+              'Se lo prendi comunque, sappi che stai comprando sicurezza, non resa: ' +
+              'e su un bomber indiscusso puo\' essere il prezzo giusto.');
       }
 
       /**
@@ -1666,6 +1853,8 @@
         notaObiettivi: notaObiettivi,
         modificatore: this.modificatoreAttuale(team, allPlayers),
         profiloRischio: this.profiloRischio(team, allTeams, mine, allPlayers),
+        mercato2: this.mercatoPerReparto(allTeams, allPlayers, mine),
+        passoSpesa: this.passoSpesa(team, strategyKey, allTeams, allPlayers),
         // La scarsita' descrive il mercato, non la mia situazione: se mi
         // restano solo slot da panchina, l'asta al rialzo sui top non mi
         // riguarda e "non temporeggiare" sarebbe un consiglio sbagliato.
@@ -1726,6 +1915,18 @@
     if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
     const t = getTeams();
     return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy(), getPlayers(), t, myTeamNum());
+  }
+
+  /** Come sta andando il mercato per reparto, e come approfittarne. */
+  function mercato() {
+    const t = getTeams();
+    return AI_AGENT.mercatoPerReparto(t, getPlayers(), myTeamNum());
+  }
+
+  /** Rischio di restare con crediti in mano a fine asta. */
+  function passoSpesa() {
+    const t = getTeams();
+    return AI_AGENT.passoSpesa(t[myTeamNum()], currentStrategy(), t, getPlayers());
   }
 
   /** Sto costruendo una rosa sopra o sotto la media? Quanto rischiare. */
@@ -1895,6 +2096,29 @@
         if (c.convenienza && c.convenienza.sintesi) L.push('  ' + c.convenienza.sintesi);
       });
     }
+    // Passo di spesa: rischio di restare con crediti in mano
+    const ps = r.passoSpesa;
+    if (ps && !ps.completo) {
+      L.push('');
+      L.push('PASSO DI SPESA');
+      L.push('- Hai ' + ps.residuo + ' crediti per ' + ps.slotMancanti +
+             ' slot; completare ai prezzi correnti ne costa ~' +
+             ps.costoStimatoPerCompletare);
+      L.push('- ' + ps.nota);
+    }
+
+    // Come sta andando il mercato e come approfittarne
+    const mk = r.mercato2;
+    if (mk && mk.letture && mk.letture.length) {
+      L.push('');
+      L.push('LETTURA DEL MERCATO');
+      mk.letture.forEach((x) => L.push('- ' + x));
+      const inf = mk.inflazionePerReparto || {};
+      const righe = Object.keys(inf).filter((k) => inf[k])
+        .map((k) => k + ' ' + Math.round(inf[k].rapporto * 100) + '%');
+      if (righe.length) L.push('- Prezzi sul listino: ' + righe.join('  '));
+    }
+
     // Scontri diretti: quanto conviene rischiare adesso
     const pr = r.profiloRischio;
     if (pr && pr.valutabile) {
@@ -2013,6 +2237,8 @@
     quantoOffrirePer: quantoOffrirePer,
     modificatore: modificatore,
     rischio: rischio,
+    mercato: mercato,
+    passoSpesa: passoSpesa,
     impattoModificatore: impattoModificatore,
     scheda: scheda,
     chiamaOAspetta: chiamaOAspetta,
