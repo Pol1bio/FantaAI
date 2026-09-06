@@ -664,15 +664,27 @@
       const media = altrui.reduce((a, v) => a + v, 0) / altrui.length;
       const scarto = media !== 0 ? (mia - media) / Math.abs(media) : 0;
 
+      /**
+       * Una percentuale relativa ha senso solo se la base e' positiva e non
+       * troppo vicina a zero: altrimenti "+273%" non comunica niente, e con
+       * basi negative il segno puo' addirittura ingannare. In quei casi ci
+       * si affida alla differenza assoluta in punti invece che al rapporto.
+       */
+      const baseUtile = Math.abs(media) > 15;
+      const differenza = mia - media;
+      const scartoUsabile = baseUtile ? scarto : null;
+      const sopra = baseUtile ? scarto > 0.15 : differenza > 10;
+      const sotto = baseUtile ? scarto < -0.15 : differenza < -10;
+
       let posizione, consiglio;
-      if (scarto > 0.15) {
+      if (sopra) {
         posizione = 'sopra la media';
         consiglio = 'La tua rosa e\' piu\' forte della media: conviene LIVELLARE. ' +
           'A scontri diretti il vantaggio si difende con la costanza — la ' +
           'varianza ti farebbe perdere partite gia\' vinte (75.8 punti contro ' +
           '82.0 nella simulazione). Preferisci due buoni giocatori a un ' +
           'fuoriclasse piu\' un riempitivo.';
-      } else if (scarto < -0.15) {
+      } else if (sotto) {
         posizione = 'sotto la media';
         consiglio = 'La tua rosa e\' piu\' debole della media: conviene RISCHIARE. ' +
           'Concentra i crediti su pochi fuoriclasse e accetta le giornate ' +
@@ -689,7 +701,8 @@
         valutabile: true,
         forzaMia: round1(mia),
         forzaMediaAvversari: round1(media),
-        scartoPercentuale: Math.round(scarto * 100),
+        differenzaPunti: round1(differenza),
+        scartoPercentuale: scartoUsabile != null ? Math.round(scartoUsabile * 100) : null,
         creditiInCassa: (team && team.budget) || 0,
         posizione: posizione,
         consiglio: consiglio
@@ -1001,7 +1014,20 @@
         convenienza: p.valueScore,
         verdetto: p.verdict,
         prezzoMercato: p.pma,
-        prezzoMaxConsigliato: p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc,
+        /**
+         * In asta si offrono solo interi da 1 in su: un tetto tipo "0.7"
+         * non e' un prezzo, si legge come un consiglio d'acquisto quando in
+         * realta' vuol dire "non conviene comprarlo". Si arrotonda a 1 come
+         * minimo offribile e si segnala con soloRiempitivo.
+         */
+        prezzoMaxConsigliato: (() => {
+          const t = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+          return (t != null && t < 1) ? 1 : t;
+        })(),
+        soloRiempitivo: (() => {
+          const t = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+          return t != null && t < 1;
+        })(),
         titolarita: p.expectedTitolarita,
         fantamediaAttesa: p.expectedFantamedia,
         trend: p.trend,
@@ -1442,12 +1468,17 @@
         let tetto = st.maxOffertaOra;
         let qualeSlot = '';
         if (bf && bf.fase === urgente) {
-          if (bf.titolariMancanti > 0 && bf.budgetPerTitolare > 0) {
+          if (bf.titolariMancanti > 0 && bf.budgetPerTitolare >= 1) {
             tetto = Math.min(tetto, Math.ceil(bf.budgetPerTitolare * 1.4));
             qualeSlot = ' Ti restano ' + bf.titolariMancanti +
                         ' slot da titolare (~' + bf.budgetPerTitolare +
                         ' crediti l\'uno) e ' + bf.panchinariMancanti +
                         ' da panchina (1-2 crediti).';
+          } else if (bf.budgetRuoloEsaurito) {
+            tetto = Math.min(tetto, 3);
+            qualeSlot = ' Hai finito il budget del reparto ma ti mancano ancora ' +
+                        bf.titolariMancanti + ' titolari: o sfori, o chiudi a ' +
+                        '1-2 crediti e recuperi nei reparti successivi.';
           } else if (bf.panchinariMancanti > 0) {
             tetto = Math.min(tetto, 3);
             qualeSlot = ' I titolari li hai gia\' presi: restano ' +
@@ -1461,8 +1492,9 @@
           criterio: (bf && bf.fase === urgente && bf.titolariMancanti === 0)
                     ? 'efficienza' : 'resa'
         });
-        const nomi = cand.map((c) => c.nome + ' (max ' + c.prezzoMaxConsigliato + ')')
-                         .join(', ');
+        const nomi = cand.map((c) => c.nome + ' (' +
+                     (c.soloRiempitivo ? 'solo riempitivo a 1' : 'max ' + c.prezzoMaxConsigliato) +
+                     ')').join(', ');
         return {
           icon: '\u{1F3AF}', titolo: 'PRIORITA: ' + urgente,
           testo: 'Ti mancano ' + a.needed + ' ' + urgente + ' con ' +
@@ -1692,9 +1724,18 @@
         panchinariMancanti: panchinariMancanti,
         budgetPerTitolare: perTitolare,
         costoPanchinaStimato: round1(costoPanchina),
+        // Il budget del reparto puo' essere finito pur restando slot da
+        // titolare: e' una situazione diversa dall'aver gia' preso i titolari
+        // e va detta come tale, non mascherata da "titolari da ~0 crediti".
+        budgetRuoloEsaurito: titolariMancanti > 0 && perTitolare < 1,
         pianoSlot: titolariMancanti > 0
-          ? titolariMancanti + ' titolari da ~' + perTitolare + ' crediti + ' +
-            panchinariMancanti + ' panchinari da 1-2'
+          ? (perTitolare >= 1
+              ? titolariMancanti + ' titolari da ~' + perTitolare + ' crediti + ' +
+                panchinariMancanti + ' panchinari da 1-2'
+              : 'budget del reparto finito: ti restano ' + titolariMancanti +
+                ' slot da titolare e ' + panchinariMancanti + ' da panchina, ' +
+                'ma niente crediti destinati. O sfori sul reparto, o li chiudi ' +
+                'tutti a 1-2 crediti e recuperi altrove')
           : (panchinariMancanti > 0
               ? 'restano solo ' + panchinariMancanti + ' panchinari: 1-2 crediti l\'uno'
               : 'reparto completo'),
@@ -1824,12 +1865,19 @@
       let tettoObiettivi = st.maxOffertaOra;
       let notaObiettivi = null;
       if (bf && bf.fase) {
-        if (bf.titolariMancanti > 0 && bf.budgetPerTitolare > 0) {
+        if (bf.titolariMancanti > 0 && bf.budgetPerTitolare >= 1) {
           // margine del 40%: in asta si paga sopra il piano
           tettoObiettivi = Math.min(tettoObiettivi,
                                     Math.ceil(bf.budgetPerTitolare * 1.4));
           notaObiettivi = 'filtrati sul budget per titolare (~' +
                           bf.budgetPerTitolare + ' crediti, +40% di margine)';
+        } else if (bf.budgetRuoloEsaurito) {
+          // Restano slot da titolare ma non c'e' piu' budget di reparto:
+          // e' diverso dall'aver gia' completato i titolari.
+          tettoObiettivi = Math.min(tettoObiettivi, 3);
+          notaObiettivi = 'budget del reparto finito ma ti mancano ancora ' +
+                          bf.titolariMancanti + ' titolari: questi sono i migliori ' +
+                          'sotto i 3 crediti';
         } else if (bf.panchinariMancanti > 0) {
           tettoObiettivi = Math.min(tettoObiettivi, 3);
           notaObiettivi = 'restano solo slot da panchina: sotto i 3 crediti';
@@ -2083,7 +2131,10 @@
     const card = (c) =>
       '- ' + c.nome + ' (' + c.ruolo + ', ' + c.squadra + ') tier ' + c.tier +
       ' | qualita ' + c.qualita +
-      ' | mercato ~' + c.prezzoMercato + ', non superare ' + c.prezzoMaxConsigliato +
+      ' | mercato ~' + c.prezzoMercato +
+      (c.soloRiempitivo
+        ? ', tetto sensato sotto 1 credito: non conviene, prendilo solo se ti serve come riempitivo a 1'
+        : ', non superare ' + c.prezzoMaxConsigliato) +
       (c.piazzati.length ? ' | ' + c.piazzati.join(', ') : '') +
       (c.rischi.length ? ' | rischi: ' + c.rischi.join('; ') : '');
 
@@ -2124,10 +2175,13 @@
     if (pr && pr.valutabile) {
       L.push('');
       L.push('QUANTO RISCHIARE (campionato a scontri diretti)');
+      const misuraScarto = pr.scartoPercentuale != null
+        ? (pr.scartoPercentuale > 0 ? '+' : '') + pr.scartoPercentuale + '%'
+        : (pr.differenzaPunti > 0 ? '+' : '') + pr.differenzaPunti + ' punti';
       L.push('- Forza stimata della rosa: ' + pr.forzaMia + ' punti contro ' +
              pr.forzaMediaAvversari + ' degli avversari (crediti in cassa ' +
              pr.creditiInCassa + ' inclusi): sei ' + pr.posizione +
-             ' (' + (pr.scartoPercentuale > 0 ? '+' : '') + pr.scartoPercentuale + '%)');
+             ' (' + misuraScarto + ')');
       L.push('- ' + pr.consiglio);
     }
 
