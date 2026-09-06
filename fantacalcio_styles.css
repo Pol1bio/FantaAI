@@ -35,9 +35,11 @@ header {
 }
 
 header h1 {
-    font-size: 32px;
+    font-size: 26px;
     color: #60a5fa;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    font-weight: 700;
 }
 
 /* ==========================================
