@@ -615,43 +615,69 @@
      * Quindi il consiglio si ribalta a meta' asta, e dipende da come si
      * sta piazzando la mia rosa rispetto alle altre.
      */
-    profiloRischio(team, allTeams, mineKey) {
+    profiloRischio(team, allTeams, mineKey, allPlayers) {
       const conta = (t) => ((t && t.players) || []).length;
-      const mio = this.rosterState(team);
       const presiMiei = conta(team);
+
+      /**
+       * Misura la FORZA della rosa, non la spesa.
+       *
+       * Confrontare la spesa per giocatore e' sbagliato: chi segue il piano
+       * magro spende poco di proposito e si ritrova con piu' crediti in
+       * cassa, ma il profilo lo classificava "sotto la media" e gli
+       * consigliava di rischiare. Esattamente al contrario del vero.
+       *
+       * Si stimano invece i punti attesi dei giocatori gia' presi, piu' il
+       * potenziale dei crediti ancora disponibili (a un tasso di conversione
+       * prudente ricavato dai prezzi correnti).
+       */
+      const pool = allPlayers || [];
+      const puntiDi = (t) => {
+        let p = 0;
+        ((t && t.players) || []).forEach((g) => {
+          const full = pool.find((x) => x.id === g.id);
+          if (!full) return;
+          const fm = full.fmStorica || full.expectedFantamedia || 6;
+          const tit = (full.expectedTitolarita || 0) / 100;
+          const n = presenzeTotali(full);
+          const fiducia = Math.min(1, n / PRESENZE_AFFIDABILI);
+          p += (fm - 6) * fiducia * 38 * tit;
+        });
+        return p;
+      };
+      // I crediti non spesi valgono punti futuri: ~0.06 punti per credito,
+      // che e' il rendimento medio osservato sul listone.
+      const TASSO = 0.06;
+      const forza = (t) => puntiDi(t) + Math.max(0, (t && t.budget) || 0) * TASSO;
+
+      const mia = forza(team);
       const altrui = [];
       Object.keys(allTeams || {}).forEach((k) => {
         if (String(k) === String(mineKey)) return;
-        const t = allTeams[k];
-        const n = conta(t);
-        if (n > 0) altrui.push(this.rosterState(t).spent / n);
+        if (conta(allTeams[k]) > 0) altrui.push(forza(allTeams[k]));
       });
-      if (altrui.length < 3 || presiMiei < 3) {
+      if (altrui.length < 3 || presiMiei < 3 || !pool.length) {
         return { valutabile: false,
                  nota: 'Troppo presto per dire se la rosa e\' sopra o sotto la media.' };
       }
 
-      // Confronto la spesa media per giocatore: chi spende di piu' a slot
-      // sta costruendo una rosa piu' forte.
-      const mioPerSlot = mio.spent / presiMiei;
-      const mediaAltrui = altrui.length
-        ? altrui.reduce((a, v) => a + v, 0) / altrui.length : mioPerSlot;
-      const scarto = mediaAltrui > 0 ? (mioPerSlot - mediaAltrui) / mediaAltrui : 0;
+      const media = altrui.reduce((a, v) => a + v, 0) / altrui.length;
+      const scarto = media !== 0 ? (mia - media) / Math.abs(media) : 0;
 
       let posizione, consiglio;
       if (scarto > 0.15) {
         posizione = 'sopra la media';
-        consiglio = 'Stai spendendo piu' + '\' degli altri per giocatore: se ' +
-          'confermi di avere la rosa piu\' forte, conviene LIVELLARE. ' +
-          'A scontri diretti il vantaggio si difende con la costanza, e la ' +
-          'varianza ti farebbe perdere partite gia\' vinte (75.8 punti ' +
-          'contro 82.0 nella simulazione).';
+        consiglio = 'La tua rosa e\' piu\' forte della media: conviene LIVELLARE. ' +
+          'A scontri diretti il vantaggio si difende con la costanza — la ' +
+          'varianza ti farebbe perdere partite gia\' vinte (75.8 punti contro ' +
+          '82.0 nella simulazione). Preferisci due buoni giocatori a un ' +
+          'fuoriclasse piu\' un riempitivo.';
       } else if (scarto < -0.15) {
         posizione = 'sotto la media';
-        consiglio = 'Stai spendendo meno degli altri per giocatore. Se resti ' +
-          'sotto, conviene RISCHIARE: concentra i crediti su pochi fuoriclasse ' +
-          'e accetta le giornate storte. Le soglie gol premiano la varianza ' +
-          'quando insegui (40.5 punti contro 30.9).';
+        consiglio = 'La tua rosa e\' piu\' debole della media: conviene RISCHIARE. ' +
+          'Concentra i crediti su pochi fuoriclasse e accetta le giornate ' +
+          'storte: le soglie gol premiano la varianza quando insegui ' +
+          '(40.5 punti contro 30.9).';
       } else {
         posizione = 'in media';
         consiglio = 'Sei in linea con gli altri. Con rose pari la varianza ' +
@@ -661,9 +687,10 @@
 
       return {
         valutabile: true,
-        spesaMiaPerGiocatore: round1(mioPerSlot),
-        spesaMediaAvversari: round1(mediaAltrui),
+        forzaMia: round1(mia),
+        forzaMediaAvversari: round1(media),
         scartoPercentuale: Math.round(scarto * 100),
+        creditiInCassa: (team && team.budget) || 0,
         posizione: posizione,
         consiglio: consiglio
       };
@@ -905,7 +932,7 @@
      * Quanto posso offrire davvero, adesso, per questo giocatore.
      * Prende il piu' stringente fra tre tetti e dice quale sta mordendo.
      */
-    quantoOffrire(player, team, strategyKey, allPlayers) {
+    quantoOffrire(player, team, strategyKey, allPlayers, allTeams, mineKey) {
       const st = this.rosterState(team);
       const analysis = this.analyzeTeam(team, strategyKey);
       const role = normRole(player.role);
@@ -968,12 +995,92 @@
         }
       }
 
+      /**
+       * TETTI DI PRUDENZA.
+       *
+       * Il tetto dei listoni dice quanto vale un giocatore sul mercato, non
+       * quanto conviene a me spenderci sopra. Due correzioni:
+       *
+       * 1) Dato inaffidabile. Pagare 189 crediti un attaccante con 20
+       *    presenze significa comprare una fantamedia che potrebbe essere
+       *    un caso. Si taglia l'offerta in proporzione a quanto poco si sa.
+       *
+       * 2) Soglia di rendimento in attacco. Oltre ~115 crediti il credito
+       *    successivo rende meno che altrove. Concentrare comunque ha senso
+       *    SOLO se sono sotto la media della lega, perche' a scontri diretti
+       *    la varianza aiuta chi insegue e danneggia chi guida. Quindi la
+       *    decisione dipende dal profilo di rischio, non e' fissa.
+       */
+      let cautela = null;
+      const aff = affidabilita(player);
+      if (aff !== 'solida' && offertaConsigliata > 20) {
+        const n = presenzeTotali(player);
+        const fiducia = Math.max(0.35, Math.min(1, n / PRESENZE_AFFIDABILI));
+        const ridotta = Math.floor(offertaConsigliata * fiducia);
+        cautela = 'Solo ' + n + ' presenze in archivio: la sua media puo\' ' +
+          'essere un caso. Invece di ' + offertaConsigliata + ' non andrei ' +
+          'oltre ' + ridotta + '.';
+        offertaConsigliata = ridotta;
+      }
+
+      if (role === 'ATT' && offertaConsigliata > 115) {
+        const pr = allTeams ? this.profiloRischio(team, allTeams, mineKey, allPlayers) : null;
+        const inseguo = pr && pr.valutabile && pr.posizione === 'sotto la media';
+        if (!inseguo) {
+          const prima = offertaConsigliata;
+          offertaConsigliata = 115;
+          cautela = (cautela ? cautela + ' Inoltre: ' : '') +
+            'sopra i 115 crediti il rendimento marginale di una punta scende ' +
+            'sotto quello di rinforzare un altro reparto' +
+            (pr && pr.valutabile ? ' e non sei sotto la media della lega, ' +
+              'quindi la varianza non ti serve' : '') +
+            ': mi fermerei a 115 invece di ' + prima + '.';
+        } else {
+          cautela = 'Sopra i 115 crediti il rendimento cala, ma sei sotto la ' +
+            'media della lega: a scontri diretti concentrare su un fuoriclasse ' +
+            'e\' la scelta giusta. Puoi arrivare a ' + offertaConsigliata + '.';
+        }
+      }
+
+      /**
+       * CREDITI NON SPESI = CREDITI PERSI.
+       *
+       * I tetti di prudenza servono a non strapagare un giocatore, ma non
+       * devono far chiudere l'asta con crediti in cassa: non si riportano.
+       * Se il budget residuo per slot supera l'offerta consigliata, il
+       * vincolo vero non e' piu' il valore del giocatore ma il dovere di
+       * spendere quello che si ha.
+       */
+      const stB = this.rosterState(team);
+      // Il surplus va misurato sul budget del REPARTO, non su tutta la cassa:
+      // altrimenti nella fase portieri vede i crediti destinati all'attacco
+      // e li spende li', sfondando il piano proprio dove andava risparmiato.
+      const bfS = this.budgetFase(team, strategyKey, allTeams, role);
+      const perSlot = (bfS && bfS.slotMancantiInFase > 0)
+        ? bfS.spendibileSenzaSforare / bfS.slotMancantiInFase
+        : 0;
+      let surplus = null;
+      if (perSlot > 0 && offertaConsigliata >= 1 &&
+          perSlot > offertaConsigliata * 1.3) {
+        const sostenibile = Math.min(stB.maxOffertaOra, Math.floor(perSlot * 1.5));
+        if (sostenibile > offertaConsigliata) {
+          surplus = 'Nel reparto ' + role + ' hai ' +
+            Math.round(bfS.spendibileSenzaSforare) + ' crediti per ' +
+            bfS.slotMancantiInFase + ' slot (' + round1(perSlot) + ' a slot): ' +
+            'tenerli in cassa non serve a niente. Su di lui puoi arrivare a ' +
+            sostenibile + '.';
+          offertaConsigliata = sostenibile;
+        }
+      }
+
       return {
         giocatore: player.name,
         ruolo: role,
         offertaMassima: offerta,
         offertaConsigliata: offertaConsigliata,
         premioModificatore: premioModificatore,
+        cautela: cautela,
+        surplus: surplus,
         // In asta il minimo e' 1 credito: un tetto sotto 1 non e' un prezzo,
         // e' un "non comprarlo". Mostrare 0 confonde.
         nonConviene: offerta < 1
@@ -1558,7 +1665,7 @@
         }),
         notaObiettivi: notaObiettivi,
         modificatore: this.modificatoreAttuale(team, allPlayers),
-        profiloRischio: this.profiloRischio(team, allTeams, mine),
+        profiloRischio: this.profiloRischio(team, allTeams, mine, allPlayers),
         // La scarsita' descrive il mercato, non la mia situazione: se mi
         // restano solo slot da panchina, l'asta al rialzo sui top non mi
         // riguarda e "non temporeggiare" sarebbe un consiglio sbagliato.
@@ -1618,13 +1725,13 @@
     const p = AI_AGENT.findPlayer(getPlayers(), nome);
     if (!p) return { errore: '"' + nome + '" non trovato nel listone.' };
     const t = getTeams();
-    return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy(), getPlayers());
+    return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy(), getPlayers(), t, myTeamNum());
   }
 
   /** Sto costruendo una rosa sopra o sotto la media? Quanto rischiare. */
   function rischio() {
     const t = getTeams();
-    return AI_AGENT.profiloRischio(t[myTeamNum()], t, myTeamNum());
+    return AI_AGENT.profiloRischio(t[myTeamNum()], t, myTeamNum(), getPlayers());
   }
 
   /** Dove sono col modificatore difesa: portiere + migliori 3 difensori. */
@@ -1793,8 +1900,9 @@
     if (pr && pr.valutabile) {
       L.push('');
       L.push('QUANTO RISCHIARE (campionato a scontri diretti)');
-      L.push('- Spendi ' + pr.spesaMiaPerGiocatore + ' a giocatore, gli altri ' +
-             pr.spesaMediaAvversari + ': sei ' + pr.posizione +
+      L.push('- Forza stimata della rosa: ' + pr.forzaMia + ' punti contro ' +
+             pr.forzaMediaAvversari + ' degli avversari (crediti in cassa ' +
+             pr.creditiInCassa + ' inclusi): sei ' + pr.posizione +
              ' (' + (pr.scartoPercentuale > 0 ? '+' : '') + pr.scartoPercentuale + '%)');
       L.push('- ' + pr.consiglio);
     }
