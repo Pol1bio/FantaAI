@@ -1332,12 +1332,75 @@
      * confrontarle con le strategie non dice nulla. Il segnale vero e' quanta
      * parte del BUDGET TOTALE ha impegnato nei reparti gia' chiusi.
      */
+    /**
+     * PROFILO STORICO DEL MANAGER (opzionale).
+     *
+     * Legge STORICO_MANAGER se e' stato caricato (file separato, non
+     * obbligatorio: senza di esso l'agente funziona come prima, dedotto
+     * solo dal comportamento in diretta). Il confronto e' per nome squadra,
+     * case-insensitive: se in questa asta il manager ha chiamato la sua
+     * squadra con un nome diverso da quello storico, non lo trova, e va
+     * bene cosi' — meglio nessun dato che un aggancio sbagliato.
+     */
+    profiloStoricoManager(nomeSquadra) {
+      const store = (typeof STORICO_MANAGER !== 'undefined') ? STORICO_MANAGER
+                   : (typeof window !== 'undefined' ? window.STORICO_MANAGER : null);
+      if (!store || !nomeSquadra) return null;
+
+      const norm = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
+      const chiave = Object.keys(store.manager).find((k) => norm(k) === norm(nomeSquadra));
+      if (!chiave) return null;
+
+      const p = store.manager[chiave];
+      const media = store.mediaLega.quotePerRuolo;
+      const ROLE_NAME = { P: 'POR', D: 'DIF', C: 'CEN', A: 'ATT' };
+
+      // Segnalo solo gli scarti che contano: sopra 6 punti percentuali di
+      // differenza dalla media lega, altrimenti e' rumore.
+      const scarti = [];
+      Object.keys(media).forEach((r) => {
+        const diff = p.quoteMediePesate[r] - media[r];
+        if (Math.abs(diff) >= 6) {
+          scarti.push(ROLE_NAME[r] + ' ' + p.quoteMediePesate[r] + '% (' +
+                     (diff > 0 ? '+' : '') + round1(diff) + ' vs media lega)');
+        }
+      });
+
+      const concDiff = p.concentrazioneMediaPesata - store.mediaLega.concentrazioneTop3;
+      let notaConcentrazione = null;
+      if (concDiff >= 8) {
+        notaConcentrazione = 'concentra molto sui primi acquisti (' +
+          p.concentrazioneMediaPesata + '% del budget sui primi 3, media lega ' +
+          store.mediaLega.concentrazioneTop3 + '%): punta su pochi fuoriclasse.';
+      } else if (concDiff <= -8) {
+        notaConcentrazione = 'spalma la spesa (' + p.concentrazioneMediaPesata +
+          '% sui primi 3, media lega ' + store.mediaLega.concentrazioneTop3 +
+          '%): raramente fa un acquisto sproporzionato.';
+      }
+
+      return {
+        manager: chiave,
+        stagioniDisponibili: p.stagioniDisponibili,
+        quoteStoriche: p.quoteMediePesate,
+        scartiRilevanti: scarti,
+        notaConcentrazione: notaConcentrazione,
+        nota: scarti.length || notaConcentrazione
+          ? ('Storico (' + p.stagioniDisponibili.length + ' stagioni): ' +
+             [...scarti, notaConcentrazione].filter(Boolean).join('; '))
+          : ('Storico (' + p.stagioniDisponibili.length +
+             ' stagioni): nessuno scostamento marcato dalla media lega.')
+      };
+    }
+
     inferOpponentStrategy(team, key) {
       const players = (team && team.players) || [];
       const nome = (team && team.name) || ('Squadra ' + (key !== undefined ? key : '?'));
+      const storico = this.profiloStoricoManager(nome);
+
       if (!players.length) {
         return { squadra: nome, strategy: 'NESSUN ACQUISTO', confidence: 0,
-                 acquisti: 0, repartiChiusi: [], quotePerRuolo: {}, residuo: this.budgetTotal };
+                 acquisti: 0, repartiChiusi: [], quotePerRuolo: {}, residuo: this.budgetTotal,
+                 storico: storico };
       }
 
       const st = this.rosterState(team);
@@ -1355,7 +1418,9 @@
           squadra: nome, strategy: 'TROPPO PRESTO PER DIRLO', confidence: 0,
           acquisti: players.length, residuo: st.residuo,
           repartiChiusi: [], quotePerRuolo: quote,
-          nota: 'Nessun reparto ancora completato da questa squadra.'
+          nota: 'Nessun reparto ancora completato da questa squadra.' +
+                (storico ? ' ' + storico.nota : ''),
+          storico: storico
         };
       }
 
@@ -1387,7 +1452,8 @@
         repartiChiusi: chiusi,
         quotePerRuolo: quote,
         dettaglio: chiusi.map((r) =>
-          r + ' ' + quote[r] + '% (attesi ' + round1(best[r] * 100) + '%)').join(', ')
+          r + ' ' + quote[r] + '% (attesi ' + round1(best[r] * 100) + '%)').join(', '),
+        storico: storico
       };
     }
 
@@ -1965,6 +2031,11 @@
     return AI_AGENT.quantoOffrire(p, t[myTeamNum()], currentStrategy(), getPlayers(), t, myTeamNum());
   }
 
+  /** Profilo storico di un manager (se disponibile) fuori da un'asta in corso. */
+  function profiloManager(nomeSquadra) {
+    return AI_AGENT.profiloStoricoManager(nomeSquadra);
+  }
+
   /** Come sta andando il mercato per reparto, e come approfittarne. */
   function mercato() {
     const t = getTeams();
@@ -2244,6 +2315,7 @@
     r.avversari.forEach((o) => {
       if (o.strategy === 'NESSUN ACQUISTO') {
         L.push('- ' + o.squadra + ': nessun acquisto');
+        if (o.storico) L.push('  ' + o.storico.nota);
         return;
       }
       let riga = '- ' + o.squadra + ': ';
@@ -2257,6 +2329,7 @@
       }
       riga += ' | residuo ' + o.residuo;
       L.push(riga);
+      if (o.storico) L.push('  ' + o.storico.nota);
     });
 
     const scN = r.scarsita || {};
@@ -2293,6 +2366,7 @@
     rischio: rischio,
     mercato: mercato,
     passoSpesa: passoSpesa,
+    profiloManager: profiloManager,
     impattoModificatore: impattoModificatore,
     scheda: scheda,
     chiamaOAspetta: chiamaOAspetta,
