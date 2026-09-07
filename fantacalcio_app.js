@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.15 - APP LOGIC
+        // FANTACALCIO v3.9.9.16 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -377,6 +377,12 @@
          * nomi diversi (o il generatore casuale) in asta vera vanificherebbe
          * tutto il lavoro di profilazione, perche' il match e' per nome
          * esatto (case-insensitive).
+         *
+         * L'ordine di chiamata NON viene sorteggiato qui: il metodo del
+         * sorteggio reale non e' ancora deciso, quindi si compilano solo i
+         * nomi e si passa alla schermata di scelta ordine manuale gia'
+         * esistente (stesso punto in cui arriva il flusso con nomi digitati
+         * a mano).
          */
         function caricaManagerReali() {
             if (typeof STORICO_MANAGER === 'undefined' ||
@@ -386,7 +392,7 @@
             }
             const nomi = STORICO_MANAGER.partecipanti202627;
             if (!confirm('Impostare le 8 squadre con i nomi reali (' + nomi.join(', ') +
-                         ") e sorteggiare l'ordine? Sostituisce la configurazione attuale.")) {
+                         ")? L'ordine di chiamata lo scegli tu nella schermata successiva.")) {
                 return;
             }
 
@@ -399,20 +405,18 @@
                 ordinati.unshift(io);
             }
 
+            // Stesso identico passo del flusso a nomi manuali: compila i
+            // nomi, poi passa alla schermata di scelta ordine (initSetup),
+            // senza toccare teamOrder ne' orderConfirmed.
             initializeTeams(ordinati);
             teamNamesConfirmed = true;
-
-            const ordine = Array.from({length: 8}, (_, i) => i + 1);
-            for (let i = ordine.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [ordine[i], ordine[j]] = [ordine[j], ordine[i]];
-            }
-            teamOrder = ordine;
-            orderConfirmed = true;
-
+            document.getElementById('setupNamesSection').classList.add('hidden');
+            document.getElementById('setupSection').style.display = 'block';
+            document.getElementById('myTeamName').textContent = teams[1].name;
+            initSetup();
             saveData();
-            localStorage.setItem('fantacalcio_config_completed', 'true');
 
+            // Nuova asta: i report della sessione precedente non servono piu'
             localStorage.removeItem('astaReports');
             const rb = document.getElementById('reportLiveBody');
             if (rb) rb.innerHTML = '';
@@ -420,21 +424,8 @@
             if (rc) { rc.textContent = '0'; rc.style.display = 'none'; }
             conversationHistory = [];
 
-            document.getElementById('setupNamesSection').style.display = 'none';
-            document.getElementById('setupSection').style.display = 'none';
-            const od = document.getElementById('orderDisplay');
-            if (od) { od.style.display = 'block'; od.classList.add('active'); }
-            const mine = document.getElementById('myTeamName');
-            if (mine) mine.textContent = teams[1].name;
-
-            initTeamButtons();
-            renderTeamsOverview();
-            updateDisplay();
-            filterAvailable();
-            renderOrderDisplay();
-
-            showMessage('✨ Manager reali caricati (' + ordinati.join(', ') +
-                        ') — profili storici attivi.', 'success');
+            showMessage('✨ Manager caricati: ' + ordinati.join(', ') +
+                        '. Scegli l\u2019ordine di chiamata qui sotto.', 'success');
         }
         window.caricaManagerReali = caricaManagerReali;
         function initSetup() {
@@ -493,15 +484,26 @@
         function renderOrderDisplay() {
             const display = document.getElementById('orderDisplay');
             display.classList.add('active');
-            display.innerHTML = teamOrder.map((squad, idx) => `
-                <div class="order-button" id="orderBtn${idx}" onclick="highlightOrder(${idx})">
-                    ${teams[squad].name}
-                </div>
-            `).join('');
+            // Le classi CSS reali sono '.order-buttons' (contenitore flex)
+            // e '.order-btn' (il singolo bottone): 'order-button' non
+            // corrispondeva a nessuna regola CSS, quindi la lista appariva
+            // senza stile, impilata verticalmente senza bottoni.
+            display.innerHTML = `<div class="order-buttons">` +
+                teamOrder.map((squad, idx) => `
+                    <div class="order-btn" id="orderBtn${idx}" onclick="highlightOrder(${idx})">
+                        ${idx + 1}. ${teams[squad].name}
+                    </div>
+                `).join('') + `</div>`;
         }
 
         function highlightOrder(index) {
-            // Qui verrà usato per evidenziare chi deve aprire
+            // Evidenzia chi sta chiamando adesso: un click sposta il segno
+            // di spunta, cosi' si tiene traccia del turno durante l'asta.
+            document.querySelectorAll('#orderDisplay .order-btn').forEach((el) => {
+                el.classList.remove('active');
+            });
+            const btn = document.getElementById('orderBtn' + index);
+            if (btn) btn.classList.add('active');
         }
 
         // TEAM BUTTONS
