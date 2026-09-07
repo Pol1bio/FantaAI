@@ -1378,15 +1378,39 @@
           '%): raramente fa un acquisto sproporzionato.';
       }
 
+      /**
+       * Sovrapprezzo per ruolo: quanto paga rispetto al prezzo mediano di
+       * lega per quel tier, storicamente. Un manager puo' risultare "nella
+       * norma" in generale ma nascondere due comportamenti opposti che si
+       * compensano (visto con Antonio: sovrapprezzo forte in attacco 1.46,
+       * occasioni nette a centrocampo 0.54 — la media dei due sarebbe 1.00,
+       * un falso "nella norma" che nasconde l'informazione utile). Per
+       * questo il dettaglio e' per ruolo, non un indice unico.
+       */
+      const noteSovrapprezzo = [];
+      const perRuolo = p.indiceSovrapprezzoPerRuolo || {};
+      Object.keys(perRuolo).forEach((r) => {
+        const idx = perRuolo[r].indice;
+        if (idx >= 1.2) {
+          noteSovrapprezzo.push(r + ': sovrapprezzo (paga in media il ' +
+            Math.round((idx - 1) * 100) + '% sopra il prezzo giusto per il tier)');
+        } else if (idx <= 0.8) {
+          noteSovrapprezzo.push(r + ': prende occasioni (paga in media il ' +
+            Math.round((1 - idx) * 100) + '% sotto il prezzo giusto per il tier)');
+        }
+      });
+
       return {
         manager: chiave,
         stagioniDisponibili: p.stagioniDisponibili,
         quoteStoriche: p.quoteMediePesate,
         scartiRilevanti: scarti,
         notaConcentrazione: notaConcentrazione,
-        nota: scarti.length || notaConcentrazione
+        sovrapprezzoPerRuolo: perRuolo,
+        noteSovrapprezzo: noteSovrapprezzo,
+        nota: scarti.length || notaConcentrazione || noteSovrapprezzo.length
           ? ('Storico (' + p.stagioniDisponibili.length + ' stagioni): ' +
-             [...scarti, notaConcentrazione].filter(Boolean).join('; '))
+             [...scarti, notaConcentrazione, ...noteSovrapprezzo].filter(Boolean).join('; '))
           : ('Storico (' + p.stagioniDisponibili.length +
              ' stagioni): nessuno scostamento marcato dalla media lega.')
       };
