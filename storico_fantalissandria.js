@@ -1,5 +1,6 @@
 // Profili storici manager — Fantalissandria (asta 2023/24-2025/26)
-// Generato da storico_fantalissandria.xlsx. Vedi mappa_dati_players.md per il metodo.
+// Generato da storico_fantalissandria.xlsx + tier Laudantes 2023-24/2024-25/2025-26.
+// Vedi mappa_dati_players.md per il metodo.
 const STORICO_MANAGER = {
  "generato": "2026-09-06",
  "lega": "Fantalissandria",
@@ -69,7 +70,25 @@ const STORICO_MANAGER = {
     "C": 23.6,
     "A": 54.6
    },
-   "concentrazioneMediaPesata": 58.2
+   "concentrazioneMediaPesata": 58.2,
+   "indiceSovrapprezzo": {
+    "indice": 0.87,
+    "n": 44
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.82,
+     "n": 15
+    },
+    "CEN": {
+     "indice": 0.54,
+     "n": 14
+    },
+    "ATT": {
+     "indice": 1.46,
+     "n": 15
+    }
+   }
   },
   "MATTIA": {
    "stagioniDisponibili": [
@@ -111,7 +130,25 @@ const STORICO_MANAGER = {
     "C": 23.7,
     "A": 53.2
    },
-   "concentrazioneMediaPesata": 54.7
+   "concentrazioneMediaPesata": 54.7,
+   "indiceSovrapprezzo": {
+    "indice": 0.95,
+    "n": 33
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.16,
+     "n": 14
+    },
+    "CEN": {
+     "indice": 0.9,
+     "n": 9
+    },
+    "ATT": {
+     "indice": 0.75,
+     "n": 10
+    }
+   }
   },
   "LORENZO": {
    "stagioniDisponibili": [
@@ -167,7 +204,25 @@ const STORICO_MANAGER = {
     "C": 24.9,
     "A": 39.6
    },
-   "concentrazioneMediaPesata": 48.6
+   "concentrazioneMediaPesata": 48.6,
+   "indiceSovrapprezzo": {
+    "indice": 0.92,
+    "n": 44
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.85,
+     "n": 15
+    },
+    "CEN": {
+     "indice": 0.9,
+     "n": 15
+    },
+    "ATT": {
+     "indice": 1.05,
+     "n": 14
+    }
+   }
   },
   "VITTORIO": {
    "stagioniDisponibili": [
@@ -209,7 +264,25 @@ const STORICO_MANAGER = {
     "C": 23.0,
     "A": 49.4
    },
-   "concentrazioneMediaPesata": 47.6
+   "concentrazioneMediaPesata": 47.6,
+   "indiceSovrapprezzo": {
+    "indice": 1.02,
+    "n": 36
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.03,
+     "n": 13
+    },
+    "CEN": {
+     "indice": 0.86,
+     "n": 12
+    },
+    "ATT": {
+     "indice": 1.21,
+     "n": 11
+    }
+   }
   },
   "IO": {
    "stagioniDisponibili": [
@@ -265,7 +338,25 @@ const STORICO_MANAGER = {
     "C": 25.8,
     "A": 44.0
    },
-   "concentrazioneMediaPesata": 47.8
+   "concentrazioneMediaPesata": 47.8,
+   "indiceSovrapprezzo": {
+    "indice": 1.08,
+    "n": 50
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.21,
+     "n": 19
+    },
+    "CEN": {
+     "indice": 1.09,
+     "n": 17
+    },
+    "ATT": {
+     "indice": 0.92,
+     "n": 14
+    }
+   }
   },
   "ELDI": {
    "stagioniDisponibili": [
@@ -321,7 +412,25 @@ const STORICO_MANAGER = {
     "C": 20.6,
     "A": 57.4
    },
-   "concentrazioneMediaPesata": 55.0
+   "concentrazioneMediaPesata": 55.0,
+   "indiceSovrapprezzo": {
+    "indice": 0.92,
+    "n": 43
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.88,
+     "n": 17
+    },
+    "CEN": {
+     "indice": 0.93,
+     "n": 13
+    },
+    "ATT": {
+     "indice": 0.98,
+     "n": 13
+    }
+   }
   },
   "ALESSANDRO": {
    "stagioniDisponibili": [
@@ -363,7 +472,25 @@ const STORICO_MANAGER = {
     "C": 20.1,
     "A": 56.8
    },
-   "concentrazioneMediaPesata": 51.6
+   "concentrazioneMediaPesata": 51.6,
+   "indiceSovrapprezzo": {
+    "indice": 1.01,
+    "n": 33
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.2,
+     "n": 14
+    },
+    "CEN": {
+     "indice": 1.24,
+     "n": 11
+    },
+    "ATT": {
+     "indice": 0.57,
+     "n": 8
+    }
+   }
   },
   "ANDREA": {
    "stagioniDisponibili": [
@@ -405,7 +532,25 @@ const STORICO_MANAGER = {
     "C": 25.1,
     "A": 54.0
    },
-   "concentrazioneMediaPesata": 54.3
+   "concentrazioneMediaPesata": 54.3,
+   "indiceSovrapprezzo": {
+    "indice": 0.76,
+    "n": 36
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.83,
+     "n": 12
+    },
+    "CEN": {
+     "indice": 0.72,
+     "n": 16
+    },
+    "ATT": {
+     "indice": 0.74,
+     "n": 8
+    }
+   }
   },
   "LEO e MARIO": {
    "stagioniDisponibili": [
@@ -433,7 +578,11 @@ const STORICO_MANAGER = {
     "C": 33.5,
     "A": 50.6
    },
-   "concentrazioneMediaPesata": 53.8
+   "concentrazioneMediaPesata": 53.8,
+   "indiceSovrapprezzo": {
+    "indice": 1.13,
+    "n": 10
+   }
   },
   "FRANCESCO e ANDREA": {
    "stagioniDisponibili": [
@@ -461,8 +610,45 @@ const STORICO_MANAGER = {
     "C": 32.5,
     "A": 33.9
    },
-   "concentrazioneMediaPesata": 45.2
+   "concentrazioneMediaPesata": 45.2,
+   "indiceSovrapprezzo": {
+    "indice": 1.02,
+    "n": 12
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.18,
+     "n": 6
+    }
+   }
   }
+ },
+ "baselinePrezzoPerTier": {
+  "DIF_A+": 27.0,
+  "DIF_A": 8,
+  "DIF_A-": 5.0,
+  "DIF_B": 2,
+  "DIF_B+": 2,
+  "DIF_B-": 3,
+  "DIF_C/C-": 1,
+  "CEN_A+": 29.5,
+  "CEN_A-": 5.0,
+  "CEN_A": 16,
+  "CEN_B+": 3,
+  "CEN_B": 2,
+  "ATT_A": 79,
+  "ATT_S": 145.0,
+  "ATT_B": 6,
+  "ATT_C": 2.5,
+  "CEN_A/A-": 35.0,
+  "CEN_A--": 6,
+  "ATT_A-": 27.5
+ },
+ "noteMetodoIndiceTier": "Indice = media geometrica (non aritmetica: i prezzi hanno una coda lunga verso l'alto, la media aritmetica dei rapporti sarebbe distorta in modo sistematico verso il sovrapprezzo per qualunque manager) del rapporto fra prezzo pagato e prezzo mediano di lega per quel tier e ruolo, pesata per recenza (1/2/3 su 2023-24/2024-25/2025-26). 1.00 = paga il prezzo giusto. Soglia minima 5 osservazioni per cella (altrimenti il dato non e' incluso, troppo rumoroso). Nomi giocatori abbinati al tier Laudantes dell'anno con matching esatto piu' tollerante (token/cognome/distanza editoriale, verificato a mano su ogni match non esatto).",
+ "fonteTier": {
+  "2023-24": "Laudantes_2023_24.xlsx, foglio TIERS",
+  "2024-25": "LAUDANTES_2024_25.pdf (estrazione da layout PDF)",
+  "2025-26": "campo tierLaudantes_2526 in players_data.js (copertura parziale: solo giocatori ancora presenti nel listone 2026-27, i big trasferiti allestero nel frattempo non sono coperti per quell anno)"
  }
 };
 if (typeof window !== "undefined") window.STORICO_MANAGER = STORICO_MANAGER;
