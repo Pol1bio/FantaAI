@@ -649,7 +649,18 @@ const STORICO_MANAGER = {
   "2023-24": "Laudantes_2023_24.xlsx, foglio TIERS",
   "2024-25": "LAUDANTES_2024_25.pdf (estrazione da layout PDF)",
   "2025-26": "campo tierLaudantes_2526 in players_data.js (copertura parziale: solo giocatori ancora presenti nel listone 2026-27, i big trasferiti allestero nel frattempo non sono coperti per quell anno)"
- }
+ },
+ "partecipanti202627": [
+  "IO",
+  "ANTONIO",
+  "ELDI",
+  "LORENZO",
+  "ALESSANDRO",
+  "VITTORIO",
+  "FRANCESCO e ANDREA",
+  "DIDO"
+ ],
+ "noteParteciapnti": "Gli 8 manager della stagione 2026/27, dalla tabella di continuita'. 7 su 8 hanno uno storico (tutti tranne DIDO, nuovo entrante). 'IO' e' il nome con cui Polibio ha sempre registrato la propria squadra."
 };
 if (typeof window !== "undefined") window.STORICO_MANAGER = STORICO_MANAGER;
 if (typeof module !== "undefined" && module.exports) module.exports = STORICO_MANAGER;
