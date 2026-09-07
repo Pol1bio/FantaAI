@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.16 - APP LOGIC
+        // FANTACALCIO v3.9.9.17 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -21,6 +21,9 @@
         let selectedTeam = null;
         let orderConfirmed = false;
         let teamOrder = [];
+        // Posizione in teamOrder di chi chiama adesso. Non persistita
+        // separatamente, come teamOrder: vive solo per la sessione corrente.
+        let turnoIndex = 0;
         let conversationHistory = [];
         let teamNamesConfirmed = false;
 
@@ -56,6 +59,52 @@
             }
             return null; // asta completata
         }
+
+        /**
+         * Chi chiama adesso.
+         *
+         * turnoIndex e' solo un punto di partenza: dopo ogni acquisto
+         * avanza di un passo, ma non deve essere sempre valido di per se'.
+         * Questa funzione lo VERIFICA e lo corregge scorrendo in avanti
+         * (al massimo 8 passi) finche' non trova una squadra che ha ancora
+         * slot liberi nella fase corrente. Questo la rende robusta ai
+         * cambi di fase (una squadra esclusa nella fase difensori torna
+         * regolarmente in gioco quando si passa ai centrocampisti) senza
+         * dover gestire quel caso a parte.
+         */
+        function prossimoChiamante() {
+            if (!orderConfirmed || !teamOrder.length) return null;
+            const fase = calcolaFaseCorrente();
+            if (!fase) return null; // asta completata
+
+            for (let passo = 0; passo < 8; passo++) {
+                const idx = (turnoIndex + passo) % 8;
+                const squadNum = teamOrder[idx];
+                const team = teams[squadNum];
+                if (!team) continue;
+                const count = team.players.filter(p => p.role === fase).length;
+                if (count < ROLE_LIMITS[fase]) {
+                    return { idx, squadNum, team, fase };
+                }
+            }
+            return null; // nessuna squadra ha slot liberi (non dovrebbe succedere)
+        }
+
+        /** Aggiorna il testo "e' il turno di chiamata di ..." nel pannello acquisto. */
+        function aggiornaTurnoChiamata() {
+            const el = document.getElementById('turnoChiamata');
+            if (!el) return;
+            const prossimo = prossimoChiamante();
+            if (!prossimo) {
+                el.textContent = '';
+                el.style.display = 'none';
+                return;
+            }
+            el.style.display = 'block';
+            el.innerHTML = '📣 È il turno di chiamata di <strong>' +
+                escapeAttr(prossimo.team.name) + '</strong>';
+        }
+        window.aggiornaTurnoChiamata = aggiornaTurnoChiamata;
 
         /**
          * Override manuale della fase in caso di errore.
@@ -279,6 +328,7 @@
             teamNamesConfirmed = false;
             orderConfirmed = false;
             teamOrder = [];
+            turnoIndex = 0;
             conversationHistory = [];
             initializeTeams();
             
@@ -333,6 +383,7 @@
             }
             teamOrder = ordine;
             orderConfirmed = true;
+            turnoIndex = 0;
 
             /**
              * Salvare PRIMA di ricaricare.
@@ -365,6 +416,7 @@
             updateDisplay();
             filterAvailable();
             renderOrderDisplay();
+            aggiornaTurnoChiamata();
 
             showMessage('✨ ' + nomi.join(', ') + ' — Pronto a giocare!', 'success');
         }
@@ -466,15 +518,18 @@
 
             teamOrder = inputs;
             orderConfirmed = true;
+            turnoIndex = 0;
             document.getElementById('setupSection').style.display = 'none';
             document.getElementById('orderDisplay').style.display = 'none';
             initTeamButtons();
             renderTeamsOverview();
             loadData();
+            aggiornaTurnoChiamata();
         }
 
         function resetSetup() {
             teamOrder = [];
+            turnoIndex = 0;
             orderConfirmed = false;
             document.getElementById('setupSection').style.display = 'block';
             document.getElementById('orderDisplay').classList.remove('active');
@@ -890,11 +945,18 @@
 
             const playerName = selectedPlayer.name; // salva prima di clearForm
             saveData();
+
+            // Avanza il turno di un passo: prossimoChiamante() correggera'
+            // da solo la posizione se questo passo non e' piu' valido
+            // (es. la squadra dopo ha gia' completato la fase).
+            turnoIndex = (turnoIndex + 1) % 8;
+
             updateDisplay();
             renderTeamsOverview();
             filterAvailable();
             setupAutocomplete(); // Aggiorna il filtro autocomplete
             clearForm();
+            aggiornaTurnoChiamata();
             showMessage(`${playerName} aggiunto a ${team.name}`, 'success');
 
             // AVANZAMENTO FASE: controlla se questo acquisto ha completato il reparto.
@@ -1294,7 +1356,10 @@
                 
                 // Resetta la conversazione con l'agente IA
                 conversationHistory = [];
-                
+
+                // Nuova asta con lo stesso ordine: il turno riparte dal primo
+                turnoIndex = 0;
+
                 // Salva i dati
                 saveData();
                 
@@ -1303,7 +1368,8 @@
                 renderTeamsOverview();
                 filterAvailable();
                 setupAutocomplete();
-                
+                aggiornaTurnoChiamata();
+
                 showMessage('Rose resettate! Le squadre e l\'ordine rimangono invariati. 🔄', 'success');
             }
         }
