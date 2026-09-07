@@ -1242,6 +1242,40 @@
           'lo considera sicuro il sovrapprezzo puo\' avere senso: decidi tu.';
       }
 
+      /**
+       * CORRETTIVO PREZZI DI LEGA.
+       *
+       * Il tetto sopra viene dal listino nazionale, che non sa come si
+       * comporta QUESTA lega in particolare. Confrontando il prezzo pagato
+       * storicamente per lo stesso tier/ruolo nelle aste di Fantalissandria
+       * col listino di oggi, si vede se il tetto nazionale e' tarato bene
+       * per questa lega o no — ad esempio i difensori A- valgono qui 2.6x
+       * il listino nazionale, coerente col fatto che il modificatore li
+       * rivaluta rispetto a una lega generica che non ce l'ha.
+       *
+       * E' un'informazione, non una correzione automatica del tetto: la
+       * baseline storica viene da appena 3 stagioni, campione piccolo per
+       * essere presa come verita' assoluta.
+       */
+      let correttivoLega = null;
+      if (typeof STORICO_MANAGER !== 'undefined' && STORICO_MANAGER.correttivoPrezzoPerTier &&
+          player.tierLaudantes) {
+        const chiave = role + '_' + player.tierLaudantes;
+        const c = STORICO_MANAGER.correttivoPrezzoPerTier[chiave];
+        if (c) {
+          correttivoLega = c.rapporto > 1
+            ? 'In questa lega gli ' + player.tierLaudantes + ' ' + role +
+              ' sono andati storicamente piu\' cari del listino nazionale ' +
+              '(mediana pagata qui ' + c.prezzoStoricoLega + ' contro ' +
+              c.prezzoOggi + ' di listino, su ' + c.nCampioneOggi +
+              ' giocatori attuali): non stupirti se serve piu\' del tetto.'
+            : 'In questa lega gli ' + player.tierLaudantes + ' ' + role +
+              ' sono andati storicamente piu\' economici del listino ' +
+              'nazionale (mediana pagata qui ' + c.prezzoStoricoLega +
+              ' contro ' + c.prezzoOggi + ' di listino): puo\' bastare meno del tetto.';
+        }
+      }
+
       if (role === 'ATT' && offertaConsigliata > 115) {
         const pr = allTeams ? this.profiloRischio(team, allTeams, mineKey, allPlayers) : null;
         const inseguo = pr && pr.valutabile && pr.posizione === 'sotto la media';
@@ -1293,6 +1327,7 @@
         offertaConsigliata: offertaConsigliata,
         premioModificatore: premioModificatore,
         cautela: cautela,
+        correttivoLega: correttivoLega,
         surplus: surplus,
         // In asta il minimo e' 1 credito: un tetto sotto 1 non e' un prezzo,
         // e' un "non comprarlo". Mostrare 0 confonde.
