@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.14 - APP LOGIC
+        // FANTACALCIO v3.9.9.15 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -368,6 +368,75 @@
 
             showMessage('✨ ' + nomi.join(', ') + ' — Pronto a giocare!', 'success');
         }
+
+        /**
+         * Carica gli 8 manager reali della lega, se e' disponibile un
+         * modulo storico (STORICO_MANAGER.partecipanti202627). A differenza
+         * di generaSquadreRandom() i nomi non sono a caso: sono quelli con
+         * cui l'agente riconosce i profili comportamentali storici. Usare
+         * nomi diversi (o il generatore casuale) in asta vera vanificherebbe
+         * tutto il lavoro di profilazione, perche' il match e' per nome
+         * esatto (case-insensitive).
+         */
+        function caricaManagerReali() {
+            if (typeof STORICO_MANAGER === 'undefined' ||
+                !STORICO_MANAGER.partecipanti202627) {
+                showMessage('Nessun elenco manager disponibile in questo modulo storico.', 'error');
+                return;
+            }
+            const nomi = STORICO_MANAGER.partecipanti202627;
+            if (!confirm('Impostare le 8 squadre con i nomi reali (' + nomi.join(', ') +
+                         ") e sorteggiare l'ordine? Sostituisce la configurazione attuale.")) {
+                return;
+            }
+
+            // 'IO' e' sempre la squadra di Polibio: va in prima posizione,
+            // dove myTeamNum punta di default.
+            const ordinati = nomi.slice();
+            const idxIo = ordinati.findIndex((n) => n.toUpperCase() === 'IO');
+            if (idxIo > 0) {
+                const io = ordinati.splice(idxIo, 1)[0];
+                ordinati.unshift(io);
+            }
+
+            initializeTeams(ordinati);
+            teamNamesConfirmed = true;
+
+            const ordine = Array.from({length: 8}, (_, i) => i + 1);
+            for (let i = ordine.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [ordine[i], ordine[j]] = [ordine[j], ordine[i]];
+            }
+            teamOrder = ordine;
+            orderConfirmed = true;
+
+            saveData();
+            localStorage.setItem('fantacalcio_config_completed', 'true');
+
+            localStorage.removeItem('astaReports');
+            const rb = document.getElementById('reportLiveBody');
+            if (rb) rb.innerHTML = '';
+            const rc = document.getElementById('reportLiveCount');
+            if (rc) { rc.textContent = '0'; rc.style.display = 'none'; }
+            conversationHistory = [];
+
+            document.getElementById('setupNamesSection').style.display = 'none';
+            document.getElementById('setupSection').style.display = 'none';
+            const od = document.getElementById('orderDisplay');
+            if (od) { od.style.display = 'block'; od.classList.add('active'); }
+            const mine = document.getElementById('myTeamName');
+            if (mine) mine.textContent = teams[1].name;
+
+            initTeamButtons();
+            renderTeamsOverview();
+            updateDisplay();
+            filterAvailable();
+            renderOrderDisplay();
+
+            showMessage('✨ Manager reali caricati (' + ordinati.join(', ') +
+                        ') — profili storici attivi.', 'success');
+        }
+        window.caricaManagerReali = caricaManagerReali;
         function initSetup() {
             const grid = document.getElementById('setupGrid');
             grid.innerHTML = '';
@@ -1731,5 +1800,7 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             if (titolo && typeof STORICO_MANAGER !== 'undefined' &&
                 STORICO_MANAGER.lega === 'Fantalissandria') {
                 titolo.textContent = 'Asta Fantalisandria';
+                const btn = document.getElementById('btnManagerReali');
+                if (btn && STORICO_MANAGER.partecipanti202627) btn.style.display = 'block';
             }
         });
