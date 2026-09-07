@@ -660,7 +660,52 @@ const STORICO_MANAGER = {
   "FRANCESCO e ANDREA",
   "DIDO"
  ],
- "noteParteciapnti": "Gli 8 manager della stagione 2026/27, dalla tabella di continuita'. 7 su 8 hanno uno storico (tutti tranne DIDO, nuovo entrante). 'IO' e' il nome con cui Polibio ha sempre registrato la propria squadra."
+ "noteParteciapnti": "Gli 8 manager della stagione 2026/27, dalla tabella di continuita'. 7 su 8 hanno uno storico (tutti tranne DIDO, nuovo entrante). 'IO' e' il nome con cui Polibio ha sempre registrato la propria squadra.",
+ "correttivoPrezzoPerTier": {
+  "DIF_A+": {
+   "prezzoOggi": 16.5,
+   "prezzoStoricoLega": 27,
+   "rapporto": 1.64,
+   "diffAssoluta": 10.5,
+   "nCampioneOggi": 11
+  },
+  "DIF_A-": {
+   "prezzoOggi": 1.9,
+   "prezzoStoricoLega": 5,
+   "rapporto": 2.63,
+   "diffAssoluta": 3.1,
+   "nCampioneOggi": 27
+  },
+  "CEN_A": {
+   "prezzoOggi": 22,
+   "prezzoStoricoLega": 16,
+   "rapporto": 0.73,
+   "diffAssoluta": -6,
+   "nCampioneOggi": 12
+  },
+  "ATT_A": {
+   "prezzoOggi": 49.3,
+   "prezzoStoricoLega": 79,
+   "rapporto": 1.6,
+   "diffAssoluta": 29.7,
+   "nCampioneOggi": 8
+  },
+  "ATT_B": {
+   "prezzoOggi": 2.4,
+   "prezzoStoricoLega": 6,
+   "rapporto": 2.5,
+   "diffAssoluta": 3.6,
+   "nCampioneOggi": 24
+  },
+  "CEN_A--": {
+   "prezzoOggi": 1.9,
+   "prezzoStoricoLega": 6,
+   "rapporto": 3.16,
+   "diffAssoluta": 4.1,
+   "nCampioneOggi": 29
+  }
+ },
+ "noteCorrettivoPrezzi": "Confronto fra il prezzo di mercato odierno (pma, per tier tierLaudantes 26/27) e il prezzo mediano REALMENTE pagato in questa lega per lo stesso tier/ruolo nelle 3 stagioni passate. Include solo scarti che contano: rapporto fuori da 0.75-1.35 E almeno 2 crediti di differenza assoluta (altrimenti un piccolo scarto in valore assoluto sembra grande solo perche' il tier e' economico). Copertura limitata a tierLaudantes (261/531 giocatori): tierConsensus non e' comparabile, usa un vocabolario diverso (solo 53% di accordo sugli stessi giocatori)."
 };
 if (typeof window !== "undefined") window.STORICO_MANAGER = STORICO_MANAGER;
 if (typeof module !== "undefined" && module.exports) module.exports = STORICO_MANAGER;
