@@ -78,6 +78,33 @@ Da questi blocchi sono derivati (calcolati una volta, non da ricalcolare):
 - **`consistency`**, **`consistencyLabel`**: quanto è stabile il
   rendimento fra stagioni
 
+### La formula esatta di fmStorica/mvStorica/pvMedia/seasonsUsed
+
+**Scoperta l'8 settembre 2026, per reverse-engineering: serviva ad
+aggiornare il file alla 3ª giornata senza rompere questi campi.**
+
+Questi quattro campi dipendono **solo** dalle tre stagioni passate
+complete (`_2324`, `_2425`, `_2526`) — **mai** dalla stagione in corso
+(`_2627`), verificato al 100% su tutti i 335 giocatori con storico:
+
+- Una stagione passata "conta" solo se `pv >= 10` in quella stagione
+  (sotto quella soglia viene scartata come campione inaffidabile, es.
+  un infortunio che ha limitato il giocatore a poche partite)
+- `seasonsUsed` = quante delle tre stagioni passate superano la soglia
+- `mvStorica`/`fmStorica` = media di `mv`/`fm` pesata per `pv`, solo
+  sulle stagioni che superano la soglia
+- `pvMedia` = media semplice (non pesata) di `pv`, solo sulle stagioni
+  che superano la soglia
+
+**Conseguenza pratica**: aggiornare `pv_2627`/`mv_2627`/`fm_2627` (e gli
+altri campi `_2627`) con le statistiche di giornata in giornata **non
+tocca mai** `fmStorica`, `mvStorica`, `pvMedia`, `seasonsUsed`. Si può
+aggiornare la stagione corrente in sicurezza senza ricalcolare nient'altro
+in questi quattro campi. Non è stato verificato se altri campi calcolati
+(tier, prezzi, quality/value score, campi `mod*`) seguano la stessa
+convenzione: quelli restano un'ipotesi non testata, da non dare per
+scontata.
+
 ## 5. La trappola delle presenze — `modPresenzeTotali` NON è generale
 
 **Scoperta il 5 settembre, causa di un errore poi corretto nell'agente.**
