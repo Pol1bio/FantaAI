@@ -215,7 +215,32 @@ riepilogo stagionale.
 
 ---
 
-## Riepilogo delle trappole (le cose da NON rifare)
+## 12. Affidabilità dei tier Laudantes — verificata, non ancora usata nel codice
+
+**Scoperta l'8 settembre 2026. TODO per la prossima volta che si tocca
+`fantacalcio_ai.js`: non ancora implementato, di proposito, per non
+toccare il codice a ridosso dell'asta.**
+
+Confrontando il tier Laudantes assegnato PRIMA della stagione con la
+media voto REALE ottenuta in quella stessa stagione (su DIF, il ruolo
+che conta per il modificatore, su tre stagioni 2023-26):
+
+- **La fascia larga è affidabile in tutte e tre le stagioni**: il gruppo
+  alto (S/A++/A+/A) ha sempre media voto reale più alta del gruppo basso.
+- **Le distinzioni fini fra tier adiacenti sono rumorose**: A- contro B,
+  o B contro B+ contro B-, si sovrappongono o si invertono in due
+  stagioni su tre (es. 2023-24: B- batte B e B+; 2025-26: A- e B quasi
+  pari). Campioni piccoli (5-19 giocatori per cella), ma il pattern è
+  coerente nel tempo, non un caso isolato.
+
+**Implicazione per `correttivoPrezzoPerTier`** (in
+`storico_fantalissandria.js`, letto da `quantoOffrire()` in
+`fantacalcio_ai.js`): oggi tratta ogni tier con uguale fiducia. Andrebbe
+aggiunta una nota che segnali quando il confronto riguarda due tier
+adiacenti nella stessa fascia larga (es. A- vs B), avvisando che li' la
+distinzione ha meno base storica, mentre fra fasce larghe diverse
+(es. A vs B) il confronto regge meglio.
+
 
 1. Non filtrare su `modPresenzeTotali` per ruoli diversi da POR/DIF:
    sommare i quattro `pv_XXXX` invece.
