@@ -320,3 +320,16 @@ conversazione e l'altra.**
    aggiunto in cima al report salvato, cosi' la domanda specifica arriva
    insieme ai dati quando il report viene incollato in una conversazione
    vera con Claude.
+
+6. **Manca un piano di combinazione fasce dentro ogni ruolo**: oggi il
+   report dice, per ogni ruolo, quanti titolari mancano e una MEDIA di
+   crediti a testa (piatta). Non distingue "1 top + 3 onesti" da "4
+   omogenei" anche quando la media e' identica. La lista OBIETTIVI ALLA
+   MIA PORTATA propone giocatori singoli sotto un tetto di prezzo, non
+   un piano tipo "di questi slot, punta a 1 in fascia alta (tier A+/S) +
+   2 in fascia media (A/A-) + 1 in fascia bassa (B/C)". E' l'equivalente
+   di quello che la guida Fantaculo fa con le sue categorie Top/Semitop/
+   Ottimo titolare/Scommessa/Jolly/Titolare low cost/Riserva. Da
+   costruire usando `tierConsensus` o `tierLaudantes` per raggruppare i
+   giocatori in fasce dentro `bestValue()`, invece di un unico tetto di
+   prezzo indifferenziato.
