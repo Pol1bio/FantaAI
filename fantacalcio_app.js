@@ -1104,9 +1104,14 @@
 
             // Lookup tier per id, calcolato una volta sola: team.players non
             // salva il tier (solo id/nome/ruolo/squadra/prezzo), va recuperato
-            // dal listone completo.
+            // dal listone completo. Si legge PLAYERS_DATA direttamente (come
+            // fa renderPlayerInfo) invece di passare da getPlayers() di
+            // fantacalcio_ai.js: PLAYERS_DATA è un globale definito da
+            // players_data.js, caricato per primo, quindi è sempre
+            // disponibile qui a prescindere dall'ordine degli altri script
+            // o da cosa l'agente esporta su window.
             const tierById = {};
-            (typeof getPlayers === 'function' ? getPlayers() : []).forEach(pd => {
+            (typeof PLAYERS_DATA !== 'undefined' ? PLAYERS_DATA : []).forEach(pd => {
                 tierById[pd.id] = pd.tierConsensus || pd.tier || null;
             });
 
