@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.22 - APP LOGIC
+        // FANTACALCIO v3.9.9.23 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1102,6 +1102,14 @@
             // Se l'ordine è stato confermato, usa quello; altrimenti usa ordine standard
             const displayOrder = orderConfirmed ? teamOrder : [1, 2, 3, 4, 5, 6, 7, 8];
 
+            // Lookup tier per id, calcolato una volta sola: team.players non
+            // salva il tier (solo id/nome/ruolo/squadra/prezzo), va recuperato
+            // dal listone completo.
+            const tierById = {};
+            (typeof getPlayers === 'function' ? getPlayers() : []).forEach(pd => {
+                tierById[pd.id] = pd.tierConsensus || pd.tier || null;
+            });
+
             for (let idx = 0; idx < displayOrder.length; idx++) {
                 const i = displayOrder[idx];
                 const team = teams[i];
@@ -1125,7 +1133,13 @@
                         playersByRole[role].forEach(p => {
                             const playerPct = ((p.price / BUDGET_TOTAL) * 100).toFixed(1);
                             const teamAbbr = getTeamAbbr(p.team);
-                            playersHtml += `<div class="team-player-item">${p.name} <span class="team-abbr">(${teamAbbr})</span> <span class="team-player-price">(${p.price}M, ${playerPct}%)</span></div>`;
+                            const tier = tierById[p.id] || '-';
+                            playersHtml += `<div class="team-player-row">
+                                <span class="tp-name" title="${escapeHtml(p.name)}">${p.name}</span>
+                                <span class="tp-abbr">${teamAbbr}</span>
+                                <span class="tp-tier tp-tier-${escapeHtml(tier)}">${tier}</span>
+                                <span class="tp-price">${p.price}M<span class="tp-pct">${playerPct}%</span></span>
+                            </div>`;
                         });
                     }
                 });
@@ -1168,9 +1182,24 @@
                         </div>`;
                 }
 
+                // STRATEGIA RILEVATA (non sulla propria squadra): stessa
+                // deduzione gia' usata nel report, resa visibile qui invece
+                // di doverla andare a cercare nel testo.
+                let strategyHtml = '';
+                if (!isMyTeam && typeof AI_AGENT !== 'undefined' && AI_AGENT.inferOpponentStrategy) {
+                    const inf = AI_AGENT.inferOpponentStrategy(team, i);
+                    const debole = ['NESSUN ACQUISTO', 'TROPPO PRESTO PER DIRLO', 'INDIZI DEBOLI']
+                        .includes(inf.strategy);
+                    strategyHtml = `<div class="team-strategy${debole ? ' weak' : ''}"
+                            title="${escapeHtml(inf.dettaglio || inf.nota || '')}">
+                        ${debole ? inf.strategy : `${inf.strategy} <span class="ts-conf">${inf.confidence}%</span>`}
+                    </div>`;
+                }
+
                 html += `
                     <div class="team-card ${isMyTeam ? 'my-team' : ''}">
                         <h4>${team.name}</h4>
+                        ${strategyHtml}
                         <div class="team-stats-row">
                             <div class="team-stat-item">
                                 <div class="label">Speso</div>
@@ -1187,10 +1216,10 @@
                                 <div class="value">${team.players.length}/${PLAYERS_PER_SQUAD}</div>
                             </div>
                         </div>
-                        ${noteHtml}
                         <div class="team-players">
                             ${playersHtml || '<div style="color: #64748b; font-size: 12px;">Nessun giocatore ancora</div>'}
                         </div>
+                        ${noteHtml}
                     </div>
                 `;
             }
@@ -1296,7 +1325,7 @@
                         <span id="repChev${r.id}">${aperto ? '▾' : '▸'}</span>
                     </button>
                     <pre class="report-body" id="repBody${r.id}"
-                         style="display:${aperto ? 'block' : 'none'};">${escapeHtml(r.report)}</pre>
+                         style="display:${aperto ? 'block' : 'none'};">${formatReportHtml(r.report)}</pre>
                 </div>`;
             }).join('');
         }
@@ -1490,6 +1519,27 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 '"': '&quot;', "'": '&#039;'
             };
             return text.replace(/[&<>"']/g, m => map[m]);
+        }
+
+        /**
+         * Grassetto per titoli di sezione e righe gia' segnalate come
+         * importanti dal report stesso (icone). Si basa sulla struttura
+         * reale del testo generato da formatReportForClaude(): i titoli
+         * di sezione non hanno mai un trattino o uno spazio iniziale
+         * ("RUOLI", "PIANO FASCE (...)"), i dettagli si ("- DIF: ...",
+         * "  margine di..."). Applicato DOPO l'escape, cosi' non interviene
+         * mai sul markup, solo sul testo gia' reso sicuro.
+         */
+        function formatReportHtml(text) {
+            const escaped = escapeHtml(text);
+            const iconePrefix = /^(✅|⚠️|🎯|💰|👀|🔴|🟡|👥|🔥)/;
+            return escaped.split('\n').map(line => {
+                const trimmed = line.replace(/^\s+/, '');
+                if (!trimmed) return line;
+                const isHeader = line === trimmed && !trimmed.startsWith('-') && !trimmed.startsWith('(');
+                const isMarcata = iconePrefix.test(trimmed);
+                return (isHeader || isMarcata) ? '<strong>' + line + '</strong>' : line;
+            }).join('\n');
         }
 
         /**
