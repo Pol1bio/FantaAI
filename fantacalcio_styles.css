@@ -736,6 +736,84 @@ button.secondary:hover {
     font-weight: bold;
 }
 
+/* Griglia ordinata per riga giocatore (sostituisce team-player-item):
+   nome flessibile con ellissi, poi tre colonne a larghezza fissa così
+   tutte le squadre allineano sigla/tier/prezzo sulla stessa colonna,
+   indipendentemente dalla lunghezza del nome. */
+.team-player-row {
+    display: grid;
+    grid-template-columns: 1fr 32px 28px 52px;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 0;
+    font-size: 12px;
+}
+
+.tp-name {
+    color: #cbd5e1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-abbr {
+    color: #60a5fa;
+    font-weight: 600;
+    font-size: 10px;
+    text-align: center;
+}
+
+.tp-tier {
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    padding: 1px 3px;
+    border-radius: 3px;
+    background: #334155;
+    color: #cbd5e1;
+}
+.tp-tier-A\+ { background: #166534; color: #86efac; }
+.tp-tier-A { background: #1e4620; color: #a3e635; }
+.tp-tier-A\- { background: #3f3a17; color: #fde047; }
+.tp-tier-A\-\- { background: #422f14; color: #fdba74; }
+
+.tp-price {
+    color: #4ade80;
+    font-weight: bold;
+    text-align: right;
+    font-size: 11px;
+    white-space: nowrap;
+}
+.tp-pct {
+    color: #64748b;
+    font-weight: normal;
+    font-size: 9px;
+    margin-left: 3px;
+}
+
+/* Indicazione strategia avversaria dedotta dall'agente. */
+.team-strategy {
+    background: #1e3a5f;
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    text-align: center;
+    padding: 3px 6px;
+    border-radius: 4px;
+    margin-bottom: 8px;
+    cursor: help;
+}
+.team-strategy.weak {
+    background: #292f3d;
+    color: #64748b;
+    font-weight: 500;
+}
+.ts-conf {
+    opacity: 0.75;
+    font-weight: 500;
+}
+
 /* ==========================================
    STRATEGY BUTTONS
    ========================================== */
@@ -1158,13 +1236,16 @@ input:checked + .toggle-slider:before {
     margin: 0;
     padding: 12px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px;
-    line-height: 1.5;
+    font-size: 12.5px;
+    line-height: 1.55;
     color: #cbd5e1;
     white-space: pre-wrap;
     word-break: break-word;
     max-height: 420px;
     overflow-y: auto;
+}
+.report-body strong {
+    color: #e2e8f0;
 }
 
 /* ==========================================
