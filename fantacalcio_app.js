@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.20 - APP LOGIC
+        // FANTACALCIO v3.9.9.21 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1808,8 +1808,25 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 alert('Errore: agente IA non caricato.');
                 return;
             }
-            
-            const report = formatReportForClaude();
+
+            /**
+             * Il campo "Chiedi un consiglio" prima veniva ignorato del
+             * tutto: c'era una funzione askAI() completa collegata a
+             * nient'altro, e in piu' chiamava l'API Anthropic direttamente
+             * dal browser senza chiave — funziona solo dentro l'ambiente
+             * artifact di Claude.ai, non su GitHub Pages dove vive questa
+             * app. La correzione sensata e' che la domanda scritta qui
+             * arrivi insieme al report quando lo incolli in una
+             * conversazione vera con Claude, non che l'app finga di
+             * rispondere da sola.
+             */
+            const domandaEl = document.getElementById('aiQuestion');
+            const domanda = domandaEl ? domandaEl.value.trim() : '';
+
+            let report = formatReportForClaude();
+            if (domanda) {
+                report = 'DOMANDA DI POLIBIO: ' + domanda + '\n\n' + report;
+            }
             const timestamp = new Date().toISOString();
             
             // Salva in localStorage locale
