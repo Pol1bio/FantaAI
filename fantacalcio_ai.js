@@ -313,6 +313,43 @@
           message: 'Rosa completa in tutti i ruoli.'
         });
       }
+
+      /**
+       * DIVERSIFICAZIONE SQUADRA REALE (dalla guida Fantaculo).
+       *
+       * Troppi giocatori della stessa squadra di Serie A creano problemi di
+       * schieramento veri: se quella squadra ha una giornata storta o un
+       * turno di riposo per le coppe, ti si ferma mezza rosa insieme. La
+       * guida suggerisce di non superare 5-6 giocatori totali e 3 titolari
+       * (qui approssimati come "costati piu' del prezzo da panchina",
+       * l'unico modo per dedurlo senza un flag esplicito titolare/riserva)
+       * dalla stessa squadra reale.
+       */
+      const perSquadraReale = {};
+      (team.players || []).forEach((p) => {
+        const sq = p.team || p.squad;
+        if (!sq) return;
+        perSquadraReale[sq] = perSquadraReale[sq] || { totale: 0, titolari: 0 };
+        perSquadraReale[sq].totale += 1;
+        if ((p.price || 0) > this.prezzoPanchinaro) perSquadraReale[sq].titolari += 1;
+      });
+      Object.entries(perSquadraReale).forEach(([squadra, c]) => {
+        const daSquadra = /^[AEIOU]/i.test(squadra) ? "dall'" + squadra : 'dal ' + squadra;
+        if (c.totale >= 6) {
+          alerts.push({
+            severity: 'warning', type: 'concentrazione_squadra', icon: '\u{1F465}',
+            message: c.totale + ' giocatori ' + daSquadra +
+                     ': se ha un turno storto o gioca le coppe, ti si ferma mezza rosa insieme.'
+          });
+        } else if (c.titolari >= 4) {
+          alerts.push({
+            severity: 'info', type: 'concentrazione_squadra', icon: '\u{1F465}',
+            message: c.titolari + ' titolari ' + daSquadra +
+                     ': attento all\u2019undici ideale, la guida consiglia di non superare 3.'
+          });
+        }
+      });
+
       return alerts;
     }
 
@@ -1051,7 +1088,19 @@
         modificatore: p.modLabel || null,
         mediaVoto: p.modMediaVoto || p.mvStorica || null,
         piazzati: p.setPieces || [],
-        rischi: p.risks || [],
+        /**
+         * Cautela sui nuovi arrivati (dalla guida Fantaculo/Fantaredazione):
+         * quasi nessuno rende al meglio il primo anno in Italia, nemmeno i
+         * campioni assoluti (solo Shevchenko e Platini hanno vinto la
+         * classifica cannonieri al primo anno, non ci e' riuscito neppure
+         * Cristiano Ronaldo). Motivo diverso dalla cautela sui campioni
+         * statistici piccoli: qui non manca il dato, manca l'adattamento
+         * al campionato.
+         */
+        rischi: p.newArrival
+          ? [...(p.risks || []), 'Nuovo arrivo in Serie A: adattamento incerto, ' +
+             'anche i migliori raramente rendono al meglio il primo anno.']
+          : (p.risks || []),
         livelloRischio: p.riskLevel
       };
     }
@@ -1288,6 +1337,23 @@
               ' sono andati storicamente piu\' economici del listino ' +
               'nazionale (mediana pagata qui ' + c.prezzoStoricoLega +
               ' contro ' + c.prezzoOggi + ' di listino): puo\' bastare meno del tetto.';
+
+          /**
+           * Affidabilita' verificata l'8 settembre 2026 (vedi mappa_dati_
+           * players.md paragrafo 12): la FASCIA LARGA (S/A++/A+ contro
+           * B/C) predice bene il rendimento reale su tutte e tre le
+           * stagioni storiche. I sotto-tier di mezzo (A, A-, A--, B+, B,
+           * B-) si sovrappongono o si invertono in due stagioni su tre —
+           * il confronto sopra usa uno di questi sotto-tier specifici,
+           * quindi vale ma con meno certezza di quanto sembri da un
+           * singolo numero.
+           */
+          const TIER_AMBIGUI = ['A', 'A-', 'A--', 'B+', 'B', 'B-'];
+          if (TIER_AMBIGUI.includes(player.tierLaudantes)) {
+            correttivoLega += ' (attenzione: ' + player.tierLaudantes +
+              ' e\' un sotto-tier di mezzo, storicamente meno affidabile ' +
+              'della fascia larga alta/bassa.)';
+          }
         }
       }
 
@@ -1921,7 +1987,7 @@
      * la cautela invece di continuare a suggerire tier alti che non puoi
      * piu' permetterti.
      */
-    prossimaFasciaConsigliata(team, strategyKey, role, allPlayers, inflazioneRuolo) {
+    prossimaFasciaConsigliata(team, strategyKey, role, allPlayers, inflazioneRuolo, scarsita) {
       const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
       const budgetRuolo = this.budgetTotal * strat[role];
       const titolariTot = this.slotTitolari[role] || this.roleLimits[role];
@@ -1989,6 +2055,56 @@
           inflazioneRuolo.giocatori + " acquisti gia' visti in " + role + ")"
         : '';
 
+      /**
+       * SCARSITA' sul tier specifico che sto per consigliare: quanti ce ne
+       * sono ancora liberi di quel livello o superiore ("liberiAlmenoFascia",
+       * gia' cumulativo — chi cerca un A+ ripiega su un A) contro quante
+       * squadre competono davvero per questo ruolo. Non e' la stessa
+       * informazione dell'inflazione: i prezzi possono essere ancora bassi
+       * ma il tier che voglio puo' sparire comunque per pura scarsita'.
+       */
+      let notaScarsita = '';
+      if (scarsita && scarsita.fase === role && prossimo) {
+        const liberi = (scarsita.liberiAlmenoFascia || {})[prossimo.tier];
+        const competitor = scarsita.squadreCompetitive || 0;
+        if (liberi != null && competitor > 0) {
+          if (liberi <= competitor) {
+            notaScarsita = ' ⚠️ Solo ' + liberi + ' liberi di livello ' + prossimo.tier +
+              ' o superiore per ' + competitor + ' squadre in corsa su ' + role +
+              ': se lo vuoi, non temporeggiare.';
+          } else if (liberi >= competitor * 2) {
+            notaScarsita = ' ' + liberi + ' liberi di livello ' + prossimo.tier +
+              ' o superiore per ' + competitor + ' squadre in corsa: puoi aspettare un prezzo migliore.';
+          }
+        }
+      }
+
+      /**
+       * COMPORTAMENTO di un avversario specifico: non cambia il MIO target
+       * (la tendenza di un manager non e' un fatto sul ruolo, e' un fatto
+       * su quella persona), ma se fra le squadre ancora a caccia di questo
+       * ruolo ce n'e' una con uno storico di sovrapprezzo marcato proprio
+       * qui, vale la pena saperlo prima di entrare in un rilancio con lei.
+       * Funziona solo se STORICO_MANAGER e' caricato (Fantalissandria) e i
+       * nomi squadra corrispondono: altrimenti non aggiunge nulla, senza
+       * errori.
+       */
+      let notaComportamento = '';
+      if (scarsita && scarsita.fase === role && scarsita.squadreAffamate) {
+        const sospetti = [];
+        scarsita.squadreAffamate.forEach((sq) => {
+          const profilo = this.profiloStoricoManager(sq.squadra);
+          const idx = profilo && profilo.sovrapprezzoPerRuolo &&
+                      profilo.sovrapprezzoPerRuolo[role];
+          if (idx && idx.indice >= 1.2) sospetti.push(sq.squadra);
+        });
+        if (sospetti.length) {
+          notaComportamento = ' 👀 ' + sospetti.join(', ') +
+            (sospetti.length > 1 ? ' hanno' : ' ha') +
+            ' storicamente sovrapagato su ' + role + ': occhio ai rilanci.';
+        }
+      }
+
       return {
         role: role,
         completo: false,
@@ -2000,7 +2116,7 @@
         prossimoTarget: prossimo ? prossimo.tier : null,
         prossimoPrezzoStimato: prossimo ? prossimo.prezzoStimato : null,
         restoDelPiano: restoDescrizione,
-        messaggio: primaNota + base + dopo + '.' + notaMercato
+        messaggio: primaNota + base + dopo + '.' + notaMercato + notaScarsita + notaComportamento
       };
     }
 
@@ -2217,12 +2333,13 @@
       // essere ricalcolata due volte o ignorata.
       const mercato2 = this.mercatoPerReparto(allTeams, allPlayers, mine);
       const inflazioneFase = fase ? (mercato2.inflazionePerReparto || {})[fase] : null;
+      const scarsita = this.scarsitaFase(allTeams, allPlayers, null, note);
 
       return {
         timestamp: new Date().toISOString(),
         stato: st,
         fase: infoFase,
-        scarsita: this.scarsitaFase(allTeams, allPlayers, null, note),
+        scarsita: scarsita,
         budgetFase: bf,
         analisiRuoli: this.analyzeTeam(team, strategyKey),
         avvisi: this.detectAnomalies(team, strategyKey),
@@ -2251,7 +2368,7 @@
           .filter((k) => String(k) !== String(mine))
           .map((k) => this.inferOpponentStrategy(allTeams[k], k)),
         prossimaFascia: fase
-          ? this.prossimaFasciaConsigliata(team, strategyKey, fase, allPlayers, inflazioneFase)
+          ? this.prossimaFasciaConsigliata(team, strategyKey, fase, allPlayers, inflazioneFase, scarsita)
           : null,
         giocatoriDisponibili: availables.length
       };
