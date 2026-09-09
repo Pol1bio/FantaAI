@@ -1089,18 +1089,43 @@
         mediaVoto: p.modMediaVoto || p.mvStorica || null,
         piazzati: p.setPieces || [],
         /**
-         * Cautela sui nuovi arrivati (dalla guida Fantaculo/Fantaredazione):
-         * quasi nessuno rende al meglio il primo anno in Italia, nemmeno i
-         * campioni assoluti (solo Shevchenko e Platini hanno vinto la
-         * classifica cannonieri al primo anno, non ci e' riuscito neppure
-         * Cristiano Ronaldo). Motivo diverso dalla cautela sui campioni
-         * statistici piccoli: qui non manca il dato, manca l'adattamento
-         * al campionato.
+         * Rischi aggiuntivi calcolati qui (non nel listone originale):
+         * nuovo arrivo e infortunio attivo. Costruiti insieme perche'
+         * entrambi si appendono a p.risks nello stesso modo.
          */
-        rischi: p.newArrival
-          ? [...(p.risks || []), 'Nuovo arrivo in Serie A: adattamento incerto, ' +
-             'anche i migliori raramente rendono al meglio il primo anno.']
-          : (p.risks || []),
+        rischi: (() => {
+          const extra = [...(p.risks || [])];
+          // Cautela sui nuovi arrivati (dalla guida Fantaculo/Fantaredazione):
+          // quasi nessuno rende al meglio il primo anno in Italia, nemmeno i
+          // campioni assoluti (solo Shevchenko e Platini hanno vinto la
+          // classifica cannonieri al primo anno, non ci e' riuscito neppure
+          // Cristiano Ronaldo). Motivo diverso dalla cautela sui campioni
+          // statistici piccoli: qui non manca il dato, manca l'adattamento
+          // al campionato.
+          if (p.newArrival) {
+            extra.push('Nuovo arrivo in Serie A: adattamento incerto, ' +
+              'anche i migliori raramente rendono al meglio il primo anno.');
+          }
+          // Infortuni (aggiornato all'8 settembre 2026, due fonti incrociate:
+          // vedi infortuni_serie_a.js). File opzionale: se non caricato,
+          // questo blocco semplicemente non aggiunge nulla.
+          const inf = (typeof INFORTUNI_SERIE_A !== 'undefined' &&
+                       INFORTUNI_SERIE_A.infortuni) ? INFORTUNI_SERIE_A.infortuni[p.id] : null;
+          if (inf) {
+            if (inf.statusIncerto) {
+              extra.push('Infortunio: ' + inf.nota + ' (nessuna data di rientro ufficiale ancora).');
+            } else if (inf.rientroStimato) {
+              let riga = 'Infortunio (' + inf.motivo + '): rientro stimato ' +
+                inf.rientroStimato + ' (fonte: ' + inf.fonteRientro + ').';
+              if (inf.discordanza) {
+                riga += ' ATTENZIONE: un\'altra fonte stima "' + inf.notaSecondaFonte +
+                  '", scarto di ' + inf.discordanzaGiorni + ' giorni — nessuna delle due e\' certa.';
+              }
+              extra.push(riga);
+            }
+          }
+          return extra;
+        })(),
         livelloRischio: p.riskLevel
       };
     }
@@ -2519,6 +2544,21 @@
     return p ? AI_AGENT.schedaCompleta(p, getPlayers()) : { errore: '"' + nome + '" non trovato.' };
   }
 
+  /** Solo l'infortunio, se c'e': piu' rapido di scheda() quando serve solo quello. */
+  function infortunio(nome) {
+    const p = AI_AGENT.findPlayer(getPlayers(), nome);
+    if (!p) return { errore: '"' + nome + '" non trovato.' };
+    if (typeof INFORTUNI_SERIE_A === 'undefined' || !INFORTUNI_SERIE_A.infortuni) {
+      return { nota: 'Modulo infortuni non caricato.' };
+    }
+    const inf = INFORTUNI_SERIE_A.infortuni[p.id];
+    if (!inf) {
+      return { nota: p.name + ': nessun infortunio segnalato (aggiornato al ' +
+               INFORTUNI_SERIE_A.generato + ').' };
+    }
+    return inf.squadra ? inf : Object.assign({}, inf, { squadra: p.team });
+  }
+
   function formatReportForClaude(report) {
     const r = report || getAIContext();
     const st = r.stato;
@@ -2776,6 +2816,7 @@
     profiloManager: profiloManager,
     impattoModificatore: impattoModificatore,
     scheda: scheda,
+    infortunio: infortunio,
     chiamaOAspetta: chiamaOAspetta,
     faseAsta: faseAsta,
     scarsita: scarsita,
