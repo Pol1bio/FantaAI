@@ -170,11 +170,26 @@
        * CONSERVATIVA e' l'unica che punta al secondo scalino del
        * modificatore: per questo tiene 12% sulla difesa.
        */
+      /**
+       * Revisionate l'8 settembre 2026: la taratura precedente (POR 2-3%,
+       * DIF 7-12%) ottimizzava solo il voto puro per il modificatore,
+       * ignorando il rendimento fantacalcistico diretto del giocatore
+       * (gol, assist, gol subiti). Verificato sui dati: un portiere A+ ha
+       * una fantamedia di 0.80 punti/partita piu' alta di un A-- (24 punti
+       * a stagione — paragonabile al guadagno marginale dell'attacco), e
+       * un difensore A+ ha 0.33 punti/partita di bonus netto in piu' dei
+       * tier bassi (~10 punti a stagione), a prescindere dal modificatore.
+       * Due fonti indipendenti (guida Fantaculo, tabella budget Laudantes
+       * per lega a 8 con modificatore) suggerivano entrambe piu' budget
+       * su POR/DIF di quanto avessimo calibrato: la verifica sui dati ha
+       * confermato che avevano ragione, non e' stato un adeguamento alla
+       * cieca.
+       */
       this.strategies = {
-        conservativa:        { name: 'CONSERVATIVA',      POR: 0.03, DIF: 0.12, CEN: 0.29, ATT: 0.56 },
-        bilanciata:          { name: 'BILANCIATA',        POR: 0.03, DIF: 0.09, CEN: 0.25, ATT: 0.63 },
-        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.02, DIF: 0.07, CEN: 0.20, ATT: 0.71 },
-        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.03, DIF: 0.09, CEN: 0.35, ATT: 0.53 }
+        conservativa:        { name: 'CONSERVATIVA',      POR: 0.06, DIF: 0.15, CEN: 0.27, ATT: 0.52 },
+        bilanciata:          { name: 'BILANCIATA',        POR: 0.06, DIF: 0.13, CEN: 0.25, ATT: 0.56 },
+        aggressiva:          { name: 'AGGRESSIVA',        POR: 0.04, DIF: 0.10, CEN: 0.20, ATT: 0.66 },
+        'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.06, DIF: 0.12, CEN: 0.35, ATT: 0.47 }
       };
 
       /**
@@ -1831,24 +1846,23 @@
       ATT: { 'A+': 130.5, A: 61.3, 'A-': 22.5, 'A--': 7.4, B: 1.2, C: 1.1 }
     };
 
-    pianoFasce(role, strategyKey) {
-      const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
-      const budgetRuolo = this.budgetTotal * strat[role];
-      const titolari = this.slotTitolari[role] || this.roleLimits[role];
-      const panchina = this.roleLimits[role] - titolari;
-      const costoPanchina = panchina * this.prezzoPanchinaro;
-      let residuo = Math.max(0, budgetRuolo - costoPanchina);
-
-      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+    /**
+     * Cuore condiviso dell'assegnazione fasce: dato un budget e un numero
+     * di slot da riempire, scende dal tier piu' alto finche' non trova
+     * quello che lascia abbastanza per finire tutti gli slot restanti al
+     * tier minimo. Usata sia per il piano "da zero" (pianoFasce) sia per
+     * "cosa mi manca adesso" (prossimaFasciaConsigliata) — stessa logica,
+     * cambia solo il budget/slot di partenza.
+     */
+    assegnaFasce(residuoIniziale, numSlot, prezzi) {
       const tierDisponibili = TIER_ORDER.filter((t) => prezzi[t] != null);
       const tierMinimo = tierDisponibili[tierDisponibili.length - 1];
       const prezzoMinimo = prezzi[tierMinimo] || 1;
+      let residuo = residuoIniziale;
 
       const assegnati = [];
-      for (let slot = 0; slot < titolari; slot++) {
-        const slotRestantiDopo = titolari - slot - 1;
-        // Scende dal tier piu' alto finche' non trova quello che lascia
-        // abbastanza per finire tutti gli altri slot al tier minimo.
+      for (let slot = 0; slot < numSlot; slot++) {
+        const slotRestantiDopo = numSlot - slot - 1;
         let scelto = tierMinimo;
         for (const t of tierDisponibili) {
           const costo = prezzi[t];
@@ -1858,14 +1872,29 @@
         assegnati.push({ tier: scelto, prezzoStimato: prezzi[scelto] || prezzoMinimo });
         residuo -= (prezzi[scelto] || prezzoMinimo);
       }
+      return { assegnazioni: assegnati, residuoFinale: residuo };
+    }
 
-      // Raggruppa per stampa: "2x A-, 1x A" invece di elencare uno a uno
+    descriviFasce(assegnazioni) {
       const conteggio = {};
-      assegnati.forEach((a) => { conteggio[a.tier] = (conteggio[a.tier] || 0) + 1; });
-      const descrizione = TIER_ORDER
+      assegnazioni.forEach((a) => { conteggio[a.tier] = (conteggio[a.tier] || 0) + 1; });
+      return TIER_ORDER
         .filter((t) => conteggio[t])
         .map((t) => conteggio[t] + 'x ' + t)
         .join(' + ');
+    }
+
+    pianoFasce(role, strategyKey) {
+      const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
+      const budgetRuolo = this.budgetTotal * strat[role];
+      const titolari = this.slotTitolari[role] || this.roleLimits[role];
+      const panchina = this.roleLimits[role] - titolari;
+      const costoPanchina = panchina * this.prezzoPanchinaro;
+      const residuo = Math.max(0, budgetRuolo - costoPanchina);
+
+      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+      const { assegnazioni, residuoFinale } = this.assegnaFasce(residuo, titolari, prezzi);
+      const descrizione = this.descriviFasce(assegnazioni);
 
       return {
         role: role,
@@ -1873,11 +1902,87 @@
         titolari: titolari,
         panchina: panchina,
         costoPanchinaStimato: round1(costoPanchina),
-        assegnazioni: assegnati,
+        assegnazioni: assegnazioni,
         descrizione: descrizione,
-        residuoDopoTitolari: round1(residuo),
+        residuoDopoTitolari: round1(residuoFinale),
         fonte: 'Prezzo mediano reale del listone per tier (tierConsensus), ' +
                'incrociato con le fasce di Laudantes dove disponibili (DIF, CEN).'
+      };
+    }
+
+    /**
+     * PROSSIMA FASCIA CONSIGLIATA — in tempo reale durante l'asta.
+     *
+     * Diverso da pianoFasce(): quello pianifica il reparto da zero, questo
+     * guarda cosa hai GIA' comprato in questo ruolo (tier + prezzo reali,
+     * non stimati) e ricalcola il piano sui soli slot e sul budget che
+     * restano DAVVERO. Se hai gia' preso un A+ a poco, il prossimo target
+     * si abbassa di conseguenza; se hai speso piu' del previsto, si alza
+     * la cautela invece di continuare a suggerire tier alti che non puoi
+     * piu' permetterti.
+     */
+    prossimaFasciaConsigliata(team, strategyKey, role, allPlayers) {
+      const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
+      const budgetRuolo = this.budgetTotal * strat[role];
+      const titolariTot = this.slotTitolari[role] || this.roleLimits[role];
+      const panchinaTot = this.roleLimits[role] - titolariTot;
+
+      const posseduti = (team.players || []).filter((p) => p.role === role);
+      const speso = posseduti.reduce((s, p) => s + (p.price || 0), 0);
+
+      // Un giocatore e' "titolare" se costato piu' del prezzo minimo da
+      // panchina: e' una soglia, non una certezza, ma e' l'unico modo per
+      // dedurre dal solo prezzo quanti titolari sono gia' stati presi
+      // (lo storico non salva un flag esplicito titolare/panchina).
+      const titolariPresi = posseduti.filter((p) => (p.price || 0) > this.prezzoPanchinaro).length;
+      const panchinaPresi = posseduti.length - titolariPresi;
+
+      const titolariMancanti = Math.max(0, titolariTot - titolariPresi);
+      const panchinaMancanti = Math.max(0, panchinaTot - panchinaPresi);
+      const costoPanchinaResidua = panchinaMancanti * this.prezzoPanchinaro;
+      const residuoRuolo = Math.max(0, budgetRuolo - speso - costoPanchinaResidua);
+
+      // Tier gia' assicurati, per mostrare "hai preso: 1x A+" nel messaggio
+      const idByName = {};
+      (allPlayers || []).forEach((p) => { idByName[p.id] = p; });
+      const tierPresi = posseduti
+        .filter((p) => (p.price || 0) > this.prezzoPanchinaro)
+        .map((p) => (idByName[p.id] || {}).tierConsensus)
+        .filter(Boolean);
+
+      if (titolariMancanti === 0) {
+        return {
+          role: role, completo: true,
+          messaggio: 'Titolari di ' + role + ' completi (' +
+                     this.descriviFasce(tierPresi.map((t) => ({ tier: t }))) +
+                     '). Quello che manca e\' panchina, 1-2 crediti.'
+        };
+      }
+
+      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+      const { assegnazioni } = this.assegnaFasce(residuoRuolo, titolariMancanti, prezzi);
+      const prossimo = assegnazioni[0];
+      const restoDescrizione = this.descriviFasce(assegnazioni.slice(1));
+
+      const descrizioneGiaPresi = tierPresi.length
+        ? this.descriviFasce(tierPresi.map((t) => ({ tier: t })))
+        : null;
+      const base = 'Prossimo ' + role + ': punta a un ' + (prossimo ? prossimo.tier : '?') +
+        (prossimo ? ' (~' + prossimo.prezzoStimato + ' crediti)' : '');
+      const dopo = restoDescrizione ? ', poi ' + restoDescrizione : '';
+      const primaNota = descrizioneGiaPresi ? 'Preso finora: ' + descrizioneGiaPresi + '. ' : '';
+
+      return {
+        role: role,
+        completo: false,
+        tierGiaPresi: tierPresi,
+        descrizioneGiaPresi: descrizioneGiaPresi,
+        titolariMancanti: titolariMancanti,
+        residuoRuolo: round1(residuoRuolo),
+        prossimoTarget: prossimo ? prossimo.tier : null,
+        prossimoPrezzoStimato: prossimo ? prossimo.prezzoStimato : null,
+        restoDelPiano: restoDescrizione,
+        messaggio: primaNota + base + dopo + '.'
       };
     }
 
@@ -2121,6 +2226,9 @@
         avversari: Object.keys(allTeams || {})
           .filter((k) => String(k) !== String(mine))
           .map((k) => this.inferOpponentStrategy(allTeams[k], k)),
+        prossimaFascia: fase
+          ? this.prossimaFasciaConsigliata(team, strategyKey, fase, allPlayers)
+          : null,
         giocatoriDisponibili: availables.length
       };
     }
@@ -2308,6 +2416,11 @@
                ' crediti per ' + bf.slotMancantiInFase + ' slot tuoi');
         L.push('  Come distribuirli: ' + bf.pianoSlot);
         if (bf.avviso) L.push('  ⚠️ ' + bf.avviso);
+      }
+      if (r.prossimaFascia && !r.prossimaFascia.completo) {
+        L.push('  🎯 ' + r.prossimaFascia.messaggio);
+      } else if (r.prossimaFascia && r.prossimaFascia.completo) {
+        L.push('  ✅ ' + r.prossimaFascia.messaggio);
       }
       if (f.slotResidui <= 3 && f.slotResidui > 0) {
         L.push('- ⚠️ Mancano solo ' + f.slotResidui +
