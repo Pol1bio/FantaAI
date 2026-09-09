@@ -1921,7 +1921,7 @@
      * la cautela invece di continuare a suggerire tier alti che non puoi
      * piu' permetterti.
      */
-    prossimaFasciaConsigliata(team, strategyKey, role, allPlayers) {
+    prossimaFasciaConsigliata(team, strategyKey, role, allPlayers, inflazioneRuolo) {
       const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
       const budgetRuolo = this.budgetTotal * strat[role];
       const titolariTot = this.slotTitolari[role] || this.roleLimits[role];
@@ -1959,7 +1959,19 @@
         };
       }
 
-      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+      /**
+       * Il prezzo di riferimento e' il listino nazionale, ma QUESTA asta
+       * puo' correre piu' calda o piu' fredda. mercatoPerReparto() confronta
+       * gia' prezzo pagato vs listino su tutte le squadre (richiede
+       * n>=5 acquisti nel ruolo per essere considerato affidabile): se
+       * disponibile, scala la baseline su quel rapporto reale invece di
+       * usare il prezzo nazionale come se questa fosse un'asta qualunque.
+       */
+      const rapportoMercato = (inflazioneRuolo && inflazioneRuolo.rapporto) || 1;
+      const prezziBase = this.BASELINE_PREZZO_TIER[role] || {};
+      const prezzi = {};
+      Object.keys(prezziBase).forEach((t) => { prezzi[t] = round1(prezziBase[t] * rapportoMercato); });
+
       const { assegnazioni } = this.assegnaFasce(residuoRuolo, titolariMancanti, prezzi);
       const prossimo = assegnazioni[0];
       const restoDescrizione = this.descriviFasce(assegnazioni.slice(1));
@@ -1971,6 +1983,11 @@
         (prossimo ? ' (~' + prossimo.prezzoStimato + ' crediti)' : '');
       const dopo = restoDescrizione ? ', poi ' + restoDescrizione : '';
       const primaNota = descrizioneGiaPresi ? 'Preso finora: ' + descrizioneGiaPresi + '. ' : '';
+      const notaMercato = (rapportoMercato < 0.85 || rapportoMercato > 1.15)
+        ? " (prezzi corretti sull'andamento reale di questa asta: " +
+          Math.round(rapportoMercato * 100) + '% del listino, su ' +
+          inflazioneRuolo.giocatori + " acquisti gia' visti in " + role + ")"
+        : '';
 
       return {
         role: role,
@@ -1979,10 +1996,11 @@
         descrizioneGiaPresi: descrizioneGiaPresi,
         titolariMancanti: titolariMancanti,
         residuoRuolo: round1(residuoRuolo),
+        rapportoMercato: rapportoMercato,
         prossimoTarget: prossimo ? prossimo.tier : null,
         prossimoPrezzoStimato: prossimo ? prossimo.prezzoStimato : null,
         restoDelPiano: restoDescrizione,
-        messaggio: primaNota + base + dopo + '.'
+        messaggio: primaNota + base + dopo + '.' + notaMercato
       };
     }
 
@@ -2194,6 +2212,12 @@
         }
       }
 
+      // Calcolato una volta come variabile, cosi' l'inflazione del ruolo in
+      // corso puo' essere passata a prossimaFasciaConsigliata invece di
+      // essere ricalcolata due volte o ignorata.
+      const mercato2 = this.mercatoPerReparto(allTeams, allPlayers, mine);
+      const inflazioneFase = fase ? (mercato2.inflazionePerReparto || {})[fase] : null;
+
       return {
         timestamp: new Date().toISOString(),
         stato: st,
@@ -2211,7 +2235,7 @@
         notaObiettivi: notaObiettivi,
         modificatore: this.modificatoreAttuale(team, allPlayers),
         profiloRischio: this.profiloRischio(team, allTeams, mine, allPlayers),
-        mercato2: this.mercatoPerReparto(allTeams, allPlayers, mine),
+        mercato2: mercato2,
         passoSpesa: this.passoSpesa(team, strategyKey, allTeams, allPlayers),
         // La scarsita' descrive il mercato, non la mia situazione: se mi
         // restano solo slot da panchina, l'asta al rialzo sui top non mi
@@ -2227,7 +2251,7 @@
           .filter((k) => String(k) !== String(mine))
           .map((k) => this.inferOpponentStrategy(allTeams[k], k)),
         prossimaFascia: fase
-          ? this.prossimaFasciaConsigliata(team, strategyKey, fase, allPlayers)
+          ? this.prossimaFasciaConsigliata(team, strategyKey, fase, allPlayers, inflazioneFase)
           : null,
         giocatoriDisponibili: availables.length
       };
