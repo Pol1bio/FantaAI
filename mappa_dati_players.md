@@ -406,3 +406,30 @@ tier o di una fascia di prezzo.
 
 **Restano da fare**, invariati: dati infortuni (due fonti pronte, serve
 gestire la discrepanza), tendenza allenatore (manca la fonte dati).
+
+## 16. Dati infortuni — fatto l'8 settembre 2026 (v3.9.9.22)
+
+Incrociate le due fonti (fantacalcio-online.com per la data ufficiale con
+provenienza per riga, fantacalcio.it per la copertura piu' ampia e i casi
+ancora senza data). 54 giocatori abbinati al listone su 58 totali (4 fuori
+dal listone dei 531: Bah, Könè Ismael, Israel, Pellegri — giocatori
+marginali non censiti).
+
+**7 casi con scarto di 14+ giorni fra le due fonti**, il piu' vistoso
+Buongiorno (46 giorni: 30/09 secondo Transfermarkt, meta' novembre secondo
+la redazione di fantacalcio.it — la guida UltimoUomo al Napoli, letta in
+precedenza, conferma l'operazione al menisco a fine luglio, il che rende
+piu' credibile la stima piu' lunga, ma non risolto con certezza). Non
+scelto quale fonte credere: `discordanza: true` con entrambe le stime
+visibili, sempre.
+
+File: `infortuni_serie_a.js`, caricato come modulo opzionale (come
+`storico_fantalissandria.js`). Wrapper console: `infortunio('nome')`.
+Anche integrato in `playerCard()`, quindi visibile con `scheda('nome')`.
+
+**Sulla tendenza allenatore**: lasciata volutamente fuori. Le guide
+UltimoUomo esistono e sono ricche (letti undici team su venti prima di
+fermarsi per rapporto costo/beneficio), ma tradurle in un dato strutturato
+per squadra richiederebbe un lavoro editoriale che nessuna fonte ci offre
+gia' pronto. Polibio ha deciso di tenerla come valutazione sua, lato
+umano, non da automatizzare.
