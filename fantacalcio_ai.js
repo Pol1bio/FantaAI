@@ -2825,7 +2825,8 @@
     azzeraNote: azzeraNote,
     patternDisponibili: patternDisponibili,
     normRole: normRole,
-    nameKey: nameKey
+    nameKey: nameKey,
+    getPlayers: getPlayers
   };
   if (typeof window !== 'undefined') Object.assign(window, api);
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
