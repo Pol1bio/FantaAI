@@ -1802,6 +1802,86 @@
     }
 
     /**
+     * PIANO FASCE DENTRO IL RUOLO.
+     *
+     * Il budget di ruolo (es. "9% alla difesa") dice quanto spendere in
+     * totale, ma non come dividerlo fra i titolari: un top da 40 e tre
+     * onesti da 3 hanno la stessa media di un quartetto omogeneo da 12,5
+     * l'uno, ma sono due strategie diverse. Questo colma quel buco.
+     *
+     * Il criterio: parte dal tier piu' alto (A+) per il primo slot e
+     * scende, MA solo se dopo aver preso quel tier resta budget
+     * sufficiente a coprire tutti gli slot restanti almeno al tier piu'
+     * economico (C) — altrimenti scende subito, per non promettere un
+     * top e poi restare senza soldi per completare il reparto.
+     *
+     * BASELINE_PREZZO_TIER viene dal prezzo mediano REALE (pma) di
+     * questo listone per ruolo+tierConsensus (tutti i 531 giocatori,
+     * soglia minima 3 osservazioni per cella). Incrociato con le fasce
+     * di prezzo di Laudantes (tierBudgetPct, dove esiste: solo DIF e
+     * CEN) per verifica: coincidono bene (es. DIF A+ noi 5.4% del
+     * budget, Laudantes dice 3-9%; CEN A+ noi 9.2%, Laudantes 6-13%).
+     * Laudantes non copre POR e ATT: per quei ruoli la baseline e'
+     * solo quella calcolata qui.
+     */
+    BASELINE_PREZZO_TIER = {
+      POR: { 'A+': 32, A: 2.2, 'A-': 1.3, B: 0.8, C: 0.9 },
+      DIF: { 'A+': 27, A: 12.6, 'A-': 4.8, 'A--': 1.4, B: 1.2, C: 1 },
+      CEN: { 'A+': 46, A: 25.4, 'A-': 8.4, 'A--': 2.7, B: 1.2, C: 1 },
+      ATT: { 'A+': 130.5, A: 61.3, 'A-': 22.5, 'A--': 7.4, B: 1.2, C: 1.1 }
+    };
+
+    pianoFasce(role, strategyKey) {
+      const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
+      const budgetRuolo = this.budgetTotal * strat[role];
+      const titolari = this.slotTitolari[role] || this.roleLimits[role];
+      const panchina = this.roleLimits[role] - titolari;
+      const costoPanchina = panchina * this.prezzoPanchinaro;
+      let residuo = Math.max(0, budgetRuolo - costoPanchina);
+
+      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+      const tierDisponibili = TIER_ORDER.filter((t) => prezzi[t] != null);
+      const tierMinimo = tierDisponibili[tierDisponibili.length - 1];
+      const prezzoMinimo = prezzi[tierMinimo] || 1;
+
+      const assegnati = [];
+      for (let slot = 0; slot < titolari; slot++) {
+        const slotRestantiDopo = titolari - slot - 1;
+        // Scende dal tier piu' alto finche' non trova quello che lascia
+        // abbastanza per finire tutti gli altri slot al tier minimo.
+        let scelto = tierMinimo;
+        for (const t of tierDisponibili) {
+          const costo = prezzi[t];
+          const bastaPerIlResto = residuo - costo >= slotRestantiDopo * prezzoMinimo;
+          if (costo <= residuo && bastaPerIlResto) { scelto = t; break; }
+        }
+        assegnati.push({ tier: scelto, prezzoStimato: prezzi[scelto] || prezzoMinimo });
+        residuo -= (prezzi[scelto] || prezzoMinimo);
+      }
+
+      // Raggruppa per stampa: "2x A-, 1x A" invece di elencare uno a uno
+      const conteggio = {};
+      assegnati.forEach((a) => { conteggio[a.tier] = (conteggio[a.tier] || 0) + 1; });
+      const descrizione = TIER_ORDER
+        .filter((t) => conteggio[t])
+        .map((t) => conteggio[t] + 'x ' + t)
+        .join(' + ');
+
+      return {
+        role: role,
+        budgetRuolo: round1(budgetRuolo),
+        titolari: titolari,
+        panchina: panchina,
+        costoPanchinaStimato: round1(costoPanchina),
+        assegnazioni: assegnati,
+        descrizione: descrizione,
+        residuoDopoTitolari: round1(residuo),
+        fonte: 'Prezzo mediano reale del listone per tier (tierConsensus), ' +
+               'incrociato con le fasce di Laudantes dove disponibili (DIF, CEN).'
+      };
+    }
+
+    /**
      * Budget del reparto in corso, ricalcolato sugli slot che restano DAVVERO
      * in questa fase. Segnala lo sforamento invece di impedirlo.
      */
@@ -2251,6 +2331,20 @@
              ' presi, ' + a.spent + ' crediti (' + a.actual + '% vs ' +
              a.target + '% target), budget di ruolo residuo ' + a.budgetResiduoRuolo);
     });
+
+    L.push('');
+    L.push('PIANO FASCE (come dividere il budget di ruolo fra i titolari)');
+    ROLES.forEach((role) => {
+      const pf = AI_AGENT.pianoFasce(role, currentStrategy());
+      L.push('- ' + role + ': ' + pf.descrizione + ' (+ ' + pf.panchina +
+             " panchinari a 1-2 crediti l'uno)");
+      if (pf.residuoDopoTitolari > 3) {
+        L.push('  margine di ' + pf.residuoDopoTitolari +
+               ' crediti: puoi spingerti sopra il prezzo tipico su un obiettivo preciso');
+      }
+    });
+    L.push('(Nota: il tier qui è quello generale del giocatore, non è detto coincida ' +
+           'con chi conviene per il modificatore — incrocia con modBargain/scheda prima di puntarci.)');
 
     if (r.avvisi.length) {
       L.push('');
