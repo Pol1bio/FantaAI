@@ -335,3 +335,47 @@ conversazione e l'altra.**
    costruire usando `tierConsensus` o `tierLaudantes` per raggruppare i
    giocatori in fasce dentro `bestValue()`, invece di un unico tetto di
    prezzo indifferenziato.
+
+## 14. Revisione budget POR/DIF — l'8 settembre 2026, con dati alla mano
+
+**Trigger**: caricato un file Laudantes con lo schema di suddivisione
+budget slot-per-slot, esplicitamente per "Fanta a 8 con modificatore"
+(la lega di Polibio). Confrontato con la guida Fantaculo gia' letta:
+
+| Ruolo | Nostra taratura (vecchia) | Fantaculo | Laudantes (file) |
+|---|---|---|---|
+| POR | 3% | 8-10% | 5.4-7.0% |
+| DIF | 9% | 12-15% | 14-15% |
+| CEN | 25% | 20-25% | 23-25% |
+| ATT | 63% | 50-60% | 60% |
+
+Due fonti indipendenti concordavano: piu' budget a POR e DIF di quanto
+avessimo calibrato. Invece di adeguarsi alla cieca, verificato sui dati
+del listone (fmStorica vs mvStorica, per tierConsensus):
+
+- **DIF**: un A+ ha 0.33 fantamedia/partita di bonus netto in piu' di un
+  tier basso (B/C, che sono a 0.01-0.04) — circa 10 punti a stagione,
+  A PRESCINDERE dal modificatore. E' probabilmente il contributo
+  gol/assist di un difensore che si propone in fase offensiva.
+- **POR**: un A+ ha una fantamedia di 0.80 punti/partita PIU' ALTA di un
+  A-- (5.32 contro 4.52) — circa 24 punti a stagione. Il gol subito (-1)
+  pesa piu' del +1 di imbattibilita' per quasi tutti i portieri, ma un
+  A+ ne prende sistematicamente meno e quindi perde meno.
+
+**Conclusione**: la vecchia taratura ottimizzava SOLO il voto puro per
+il modificatore (da cui la strategia "portiere piu' economico possibile,
+tanto il voto e' simile"), ignorando il rendimento fantacalcistico
+diretto (gol, assist, gol subiti). Le due fonti esterne avevano ragione
+per un motivo diverso da quello con cui lo dicevano, ma il risultato
+pratico converge: revisionate le percentuali (v3.9.9.19).
+
+Nuovi valori (`bilanciata`): POR 3%→6%, DIF 9%→13%, CEN 25% (invariato),
+ATT 63%→56%. Le altre tre strategie riviste in proporzione, prendendo il
+budget aggiuntivo da ATT.
+
+**Nota per la prossima volta**: questa e' la seconda volta in questa
+sessione che una taratura fatta su UN aspetto del punteggio (il voto per
+il modificatore) si e' rivelata incompleta perche' non guardava il
+rendimento fantacalcistico totale. Vale la pena, in futuro, controllare
+sempre fmStorica (non solo mvStorica) quando si valuta il valore di un
+tier o di una fascia di prezzo.
