@@ -306,3 +306,17 @@ conversazione e l'altra.**
    dall'autore. Non abbiamo verificato questo con dati di campionato:
    da controllare quando arriveranno altre giornate, prima di scartare
    o confermare i difensori Lazio per il modificatore.
+
+5. **Campo "Chiedi un consiglio" nell'Agente IA — bottone collegato alla
+   funzione sbagliata**: esiste gia' una funzione completa `askAI()` che
+   legge la domanda e costruisce un contesto con lo stato dell'asta, ma
+   il bottone HTML chiama `inviaReport()` (che ignora il campo e salva
+   solo il report automatico). In piu', anche corretto il collegamento,
+   `askAI()` chiama `api.anthropic.com` direttamente dal browser senza
+   chiave — funziona solo dentro l'ambiente artifact di Claude.ai, non
+   su GitHub Pages dove l'app e' pubblicata. La correzione sensata non e'
+   abilitare una vera chiamata API (richiederebbe una chiave esposta
+   lato client), ma far si' che il testo scritto nel campo venga
+   aggiunto in cima al report salvato, cosi' la domanda specifica arriva
+   insieme ai dati quando il report viene incollato in una conversazione
+   vera con Claude.
