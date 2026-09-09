@@ -258,7 +258,8 @@ distinzione ha meno base storica, mentre fra fasce larghe diverse
 **Scritto l'8 settembre 2026, esplicitamente per non perderle fra una
 conversazione e l'altra.**
 
-1. **Affidabilità Laudantes per fascia larga vs sotto-tier** (vedi §12
+1. ~~Affidabilità Laudantes per fascia larga vs sotto-tier~~ **FATTO
+   l'8 settembre 2026** (v3.9.9.21): cautela aggiunta a `correttivoLega`. (vedi §12
    sopra): aggiungere una cautela a `correttivoPrezzoPerTier` quando il
    confronto è fra due tier adiacenti nella stessa fascia larga.
 
@@ -379,3 +380,29 @@ il modificatore) si e' rivelata incompleta perche' non guardava il
 rendimento fantacalcistico totale. Vale la pena, in futuro, controllare
 sempre fmStorica (non solo mvStorica) quando si valuta il valore di un
 tier o di una fascia di prezzo.
+
+## 15. Aggiornamento 8 settembre 2026 (sera) — chiusura di altri TODO
+
+- **Scarsità collegata alla fascia in tempo reale**: `prossimaFasciaConsigliata`
+  ora confronta `liberiAlmenoFascia[tier]` con `squadreCompetitive` e segnala
+  urgenza o margine per attendere.
+- **Comportamento manager collegato, ma senza toccare il target**: se una
+  squadra ancora a caccia dello stesso ruolo ha un indice di sovrapprezzo
+  storico >=1.2 su quel ruolo, compare un avviso mirato nel messaggio.
+  Non cambia il tier consigliato (la tendenza di un manager e' un fatto su
+  quella persona, non sul ruolo) — resta un avviso, non un aggiustamento
+  numerico. Degrada senza errori se STORICO_MANAGER non e' caricato.
+- **Diversificazione squadra reale** (dalla guida Fantaculo): avviso in
+  `detectAnomalies` se >=6 giocatori totali o >=4 "titolari" (prezzo sopra
+  quello da panchina) dalla stessa squadra di Serie A.
+- **Cautela `newArrival`**: aggiunta a `rischi` in `playerCard()`.
+- **Punto 1 di questa lista (Laudantes fascia larga vs sotto-tier)**: fatto,
+  vedi sopra.
+- **Campo domanda dell'agente**: `inviaReport()` ora legge `aiQuestion` e la
+  antepone al report salvato, invece di ignorarla. La vecchia `askAI()`
+  (che chiamava l'API Anthropic direttamente dal browser senza chiave)
+  resta nel file ma non e' piu' collegata a nessun pulsante — inutilizzata,
+  non rimossa per prudenza a ridosso dell'asta.
+
+**Restano da fare**, invariati: dati infortuni (due fonti pronte, serve
+gestire la discrepanza), tendenza allenatore (manca la fonte dati).
