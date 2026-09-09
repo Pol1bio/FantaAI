@@ -252,3 +252,57 @@ distinzione ha meno base storica, mentre fra fasce larghe diverse
    `tierLaudantes_2526` come campo diretto.
 5. Non guardare solo `Object.keys(D[0])` per sapere quali campi esistono:
    fare l'unione su tutto l'array.
+
+## 13. Cose lasciate indietro — TODO per la prossima sessione di codice
+
+**Scritto l'8 settembre 2026, esplicitamente per non perderle fra una
+conversazione e l'altra.**
+
+1. **Affidabilità Laudantes per fascia larga vs sotto-tier** (vedi §12
+   sopra): aggiungere una cautela a `correttivoPrezzoPerTier` quando il
+   confronto è fra due tier adiacenti nella stessa fascia larga.
+
+2. **Dati infortuni**: due fonti verificate e pronte da integrare —
+   `fantacalcio.it/infortunati-serie-a` (copertura larga, testo libero,
+   include casi a rischio senza data) e `fantacalcio-online.com/it/
+   infortunati-serie-a` (tabella pulita, data di rientro esatta, fonte
+   per riga). **Discordano su almeno un caso** (Buongiorno: fine
+   settembre secondo una, meta' novembre secondo l'altra — la guida
+   UltimoUomo al Napoli conferma l'operazione al ginocchio a fine
+   luglio, il che rende piu' credibile la stima piu' lunga, ma non
+   risolve la discrepanza da solo). Da integrare come nuovo campo,
+   segnalando esplicitamente i casi di disaccordo invece di sceglierne
+   uno a caso.
+
+3. **Dalle guide Fantaculo/Fantaredazione** (due PDF letti l'8
+   settembre), idee valutate e non ancora implementate:
+   - **Vincolo di diversificazione squadra reale**: mai piu' di 5-6
+     giocatori della stessa squadra di Serie A in rosa, mai piu' di 3
+     titolari della stessa squadra nell'undici ideale. Costo di
+     implementazione basso (basta contare `p.team` sugli acquisti), non
+     richiede dati nuovi.
+   - **Cautela sui `newArrival`**: il campo esiste gia' nel listone e
+     non viene mai usato. L'idea (solo Shevchenko e Platini hanno vinto
+     la classifica cannonieri al primo anno in Italia, nemmeno Ronaldo)
+     suggerisce un avviso simile a quello sui campioni statistici
+     piccoli, ma per un motivo diverso (adattamento al campionato, non
+     scarsita' di dati storici).
+   - **Tendenza allenatore** (offensivo/difensivo/quanto ruota): idea
+     buona ma richiede una fonte dati che non abbiamo (chi allena dove
+     e con che tendenza). Non c'e' un modo semplice per procurarsela
+     senza un lavoro editoriale ricorrente stagione per stagione.
+   - **Divergenza nota e consapevole**: la guida raccomanda 12-15% del
+     budget alla difesa (di piu' se il modificatore e' forte), noi
+     siamo scesi al 9% dopo il calcolo sulle soglie esatte di questa
+     lega. Non cambierei rotta, ma va tenuto a mente come disaccordo
+     con una fonte autorevole, non come qualcosa di ignorato per
+     sbaglio.
+
+4. **Difesa Lazio 2026/27 — segnale di rischio da fonte esterna**: la
+   guida UltimoUomo (dati di precampionato, quindi da confermare con
+   le partite vere) descrive la coppia centrale Doekhi-Provstgaard come
+   lenta e gia' in difficolta' contro ogni avversario di livello medio
+   nelle amichevoli, con "imbarcate mostruose" esplicitamente previste
+   dall'autore. Non abbiamo verificato questo con dati di campionato:
+   da controllare quando arriveranno altre giornate, prima di scartare
+   o confermare i difensori Lazio per il modificatore.
