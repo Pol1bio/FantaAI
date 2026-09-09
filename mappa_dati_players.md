@@ -321,7 +321,9 @@ conversazione e l'altra.**
    insieme ai dati quando il report viene incollato in una conversazione
    vera con Claude.
 
-6. **Manca un piano di combinazione fasce dentro ogni ruolo**: oggi il
+6. ~~Manca un piano di combinazione fasce dentro ogni ruolo~~ **FATTO
+   l'8 settembre 2026** (v3.9.9.18): funzione `pianoFasce()` in
+   fantacalcio_ai.js, sezione PIANO FASCE nel report.: oggi il
    report dice, per ogni ruolo, quanti titolari mancano e una MEDIA di
    crediti a testa (piatta). Non distingue "1 top + 3 onesti" da "4
    omogenei" anche quando la media e' identica. La lista OBIETTIVI ALLA
