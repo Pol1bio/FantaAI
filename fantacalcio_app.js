@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.34 - APP LOGIC
+        // FANTACALCIO v3.9.9.35 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.34';
+        const APP_VERSION = '3.9.9.35';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -333,7 +333,11 @@
 
             initializeTeams(names);
             teamNamesConfirmed = true;
-            document.getElementById('setupNamesSection').classList.add('hidden');
+            // classList.add('hidden') da solo non bastava: una regola .hidden
+            // generica non e' mai esistita nel CSS (c'era solo
+            // .order-display.hidden, che non si applica a questa sezione).
+            // Si imposta anche display, come fanno tutti gli altri punti.
+            nascondiSetupNomi();
             document.getElementById('setupSection').style.display = 'block';
             document.getElementById('myTeamName').textContent = teams[1].name;
             initSetup();
@@ -461,6 +465,14 @@
          * esistente (stesso punto in cui arriva il flusso con nomi digitati
          * a mano).
          */
+        /** Chiude la schermata "Configurazione Squadre". */
+        function nascondiSetupNomi() {
+            const el = document.getElementById('setupNamesSection');
+            if (!el) return;
+            el.classList.add('hidden');
+            el.style.display = 'none';
+        }
+
         function caricaManagerReali() {
             if (typeof STORICO_MANAGER === 'undefined' ||
                 !STORICO_MANAGER.partecipanti202627) {
@@ -487,10 +499,18 @@
             // senza toccare teamOrder ne' orderConfirmed.
             initializeTeams(ordinati);
             teamNamesConfirmed = true;
-            document.getElementById('setupNamesSection').classList.add('hidden');
+            // classList.add('hidden') da solo non bastava: una regola .hidden
+            // generica non e' mai esistita nel CSS (c'era solo
+            // .order-display.hidden, che non si applica a questa sezione).
+            // Si imposta anche display, come fanno tutti gli altri punti.
+            nascondiSetupNomi();
             document.getElementById('setupSection').style.display = 'block';
             document.getElementById('myTeamName').textContent = teams[1].name;
             initSetup();
+            // Senza questo, ricaricando la pagina la schermata dei nomi
+            // tornava a comparire: gli altri due percorsi lo facevano gia',
+            // questo no.
+            localStorage.setItem('fantacalcio_config_completed', 'true');
             saveData();
 
             // Nuova asta: i report della sessione precedente non servono piu'

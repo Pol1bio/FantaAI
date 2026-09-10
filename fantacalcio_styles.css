@@ -46,6 +46,13 @@ header h1 {
    SETUP E CONFIGURAZIONE
    ========================================== */
 
+/* Regola mancante da sempre: il codice usa classList.add('hidden') in piu'
+   punti, ma l'unica regola esistente era .order-display.hidden, valida solo
+   per quel riquadro. Su ogni altro elemento la classe non faceva nulla. */
+.hidden {
+    display: none !important;
+}
+
 /* SETUP SECTIONS */
 .setup-section {
     background: #1e293b;
