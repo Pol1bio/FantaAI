@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.23 - APP LOGIC
+        // FANTACALCIO v3.9.9.24 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -33,6 +33,25 @@
 
         // Quali pannelli note sono aperti (sopravvive ai re-render della griglia)
         const notePanelAperti = new Set();
+
+        // Storico degli acquisti registrati, per annullarli in caso di errore
+        // (prezzo sbagliato, squadra sbagliata). Ogni voce e' tutto cio' che
+        // serve a rimettere lo stato com'era PRIMA di quell'acquisto: il
+        // giocatore, chi l'aveva preso, quanto era stato pagato, e la
+        // posizione del turno di chiamata. Tenuto a 30 voci: serve a
+        // correggere un errore appena fatto, non a rifare l'asta.
+        let undoStack = [];
+        const UNDO_MAX = 30;
+
+        // Filtro sui calciatori specialisti dei piazzati (campo setPieces)
+        const activeSetPieces = new Set();
+
+        // Vista della Panoramica Squadre: 'expanded' o 'compact'.
+        // Dichiarata qui, insieme agli altri globali, perche' ora la legge
+        // anche renderTeamsOverview(): con 'let' piu' in basso nel file
+        // sarebbe finita in temporal dead zone se un render fosse partito
+        // prima che quella riga venisse eseguita.
+        let overviewMode = 'expanded';
 
         // ==========================================
         // LOGICA DI FASE (asta per reparto)
@@ -593,7 +612,7 @@
             link.click();
             URL.revokeObjectURL(url);
 
-            showMessage('Asta scaricata! 📥', 'success');
+            showMessage('Asta salvata! 💾', 'success');
         }
 
         function loadAstaJSON(event) {
@@ -896,6 +915,13 @@
             }
 
             const team = teams[selectedTeam];
+
+            // Chi aveva davvero il turno di chiamata PRIMA di questo acquisto.
+            // Serve piu' avanti per far avanzare il turno dalla posizione
+            // giusta: turnoIndex da solo puo' essere rimasto indietro su una
+            // squadra che nel frattempo ha completato il reparto.
+            const chiamanteCorrente = prossimoChiamante();
+
             if (team.budget < price) {
                 showMessage('Budget insufficiente', 'error');
                 return;
@@ -943,13 +969,37 @@
             team.spent += price;
             team.budget -= price;
 
+            // Salva quanto serve ad annullare questo acquisto (P1)
+            undoStack.push({
+                teamNum: selectedTeam,
+                playerId: selectedPlayer.id,
+                playerName: selectedPlayer.name,
+                price: price,
+                turnoIndexPrima: turnoIndex,
+                phaseOverridePrima: phaseOverride
+            });
+            if (undoStack.length > UNDO_MAX) undoStack.shift();
+
             const playerName = selectedPlayer.name; // salva prima di clearForm
             saveData();
 
-            // Avanza il turno di un passo: prossimoChiamante() correggera'
-            // da solo la posizione se questo passo non e' piu' valido
-            // (es. la squadra dopo ha gia' completato la fase).
-            turnoIndex = (turnoIndex + 1) % 8;
+            // AVANZAMENTO DEL TURNO.
+            //
+            // Prima qui c'era 'turnoIndex = (turnoIndex + 1) % 8', contando
+            // sul fatto che prossimoChiamante() sarebbe andato avanti da solo
+            // saltando le squadre che hanno gia' chiuso il reparto. Ma quel
+            // salto non veniva mai riscritto in turnoIndex: se il chiamante
+            // reale era due posizioni piu' avanti (perche' le squadre in mezzo
+            // avevano completato il ruolo), l'indice avanzava di uno solo e
+            // finiva per fermarsi di nuovo sulla stessa squadra, che chiamava
+            // due volte di fila.
+            //
+            // Adesso il turno riparte dalla posizione di chi ha chiamato
+            // davvero, quindi le squadre che hanno finito il reparto restano
+            // fuori dal giro finche' non si apre la fase successiva.
+            turnoIndex = chiamanteCorrente
+                ? (chiamanteCorrente.idx + 1) % 8
+                : (turnoIndex + 1) % 8;
 
             updateDisplay();
             renderTeamsOverview();
@@ -971,6 +1021,109 @@
                 setTimeout(() => showMessage(msg, 'error'), 2200);
             }
         }
+
+        /**
+         * P1 — ANNULLA L'ULTIMO ACQUISTO REGISTRATO.
+         *
+         * Serve a correggere un errore di battitura sul prezzo o
+         * un'assegnazione alla squadra sbagliata: si annulla e si
+         * ri-registra corretto, invece di dover azzerare la rosa.
+         *
+         * Rimette esattamente lo stato precedente: toglie il giocatore,
+         * restituisce i crediti, e riporta indietro il turno di chiamata
+         * (altrimenti l'ordine slitterebbe di una posizione a ogni
+         * correzione). Si puo' premere piu' volte per risalire indietro.
+         */
+        function annullaUltimoAcquisto() {
+            if (!undoStack.length) {
+                showMessage('Nessun acquisto da annullare.', 'error');
+                return;
+            }
+
+            const ultimo = undoStack[undoStack.length - 1];
+            const team = teams[ultimo.teamNum];
+            if (!team) {
+                undoStack.pop();
+                showMessage('Squadra non trovata: voce scartata.', 'error');
+                return;
+            }
+
+            const idx = team.players.map(p => p.id).lastIndexOf(ultimo.playerId);
+            if (idx === -1) {
+                undoStack.pop();
+                showMessage('Il giocatore non risulta piu\' in rosa: voce scartata.', 'error');
+                updateDisplay();
+                return;
+            }
+
+            const rimosso = team.players[idx];
+            if (!confirm('Annullare l\'acquisto di ' + rimosso.name +
+                         ' (' + rimosso.price + 'M) da parte di ' + team.name + '?')) {
+                return;
+            }
+
+            team.players.splice(idx, 1);
+            team.spent -= rimosso.price;
+            team.budget += rimosso.price;
+
+            // Riporta indietro anche il turno e l'eventuale fase forzata,
+            // cosi' l'annullamento e' davvero un ritorno allo stato di prima
+            // e non lascia l'ordine di chiamata sfalsato.
+            turnoIndex = ultimo.turnoIndexPrima;
+            phaseOverride = ultimo.phaseOverridePrima;
+
+            undoStack.pop();
+            saveData();
+            updateDisplay();
+            renderTeamsOverview();
+            filterAvailable();
+            setupAutocomplete();
+            aggiornaTurnoChiamata();
+            showMessage('Annullato: ' + rimosso.name + ' torna disponibile, ' +
+                        rimosso.price + 'M restituiti a ' + team.name + '.', 'success');
+        }
+        window.annullaUltimoAcquisto = annullaUltimoAcquisto;
+
+        /**
+         * P5 — A CHE PUNTO SIAMO.
+         *
+         * Due numeri diversi e complementari: quanto manca a chiudere il
+         * REPARTO in corso (che e' quello che detta il ritmo, perche' l'asta
+         * e' a reparti in sequenza) e quanto manca a chiudere TUTTA l'asta.
+         * Il totale e' il numero di slot che le 8 squadre devono riempire,
+         * non il listone: 24 portieri, 64 difensori, 64 centrocampisti,
+         * 48 attaccanti, 200 in tutto.
+         */
+        function calcolaAvanzamento() {
+            const nSquadre = 8;
+            let presiTot = 0, slotTot = 0;
+            const perRuolo = {};
+
+            ROLE_ORDER.forEach(role => {
+                const limite = ROLE_LIMITS[role];
+                const slotRuolo = limite * nSquadre;
+                let presiRuolo = 0;
+                for (let k = 1; k <= nSquadre; k++) {
+                    if (!teams[k]) continue;
+                    presiRuolo += Math.min(limite, teams[k].players.filter(p => p.role === role).length);
+                }
+                perRuolo[role] = { presi: presiRuolo, slot: slotRuolo };
+                presiTot += presiRuolo;
+                slotTot += slotRuolo;
+            });
+
+            const fase = calcolaFaseCorrente();
+            return {
+                fase: fase,
+                fasePresi: fase ? perRuolo[fase].presi : 0,
+                faseSlot: fase ? perRuolo[fase].slot : 0,
+                fasePct: fase ? Math.round((perRuolo[fase].presi / perRuolo[fase].slot) * 100) : 100,
+                totPresi: presiTot,
+                totSlot: slotTot,
+                totPct: slotTot ? Math.round((presiTot / slotTot) * 100) : 0
+            };
+        }
+        window.calcolaAvanzamento = calcolaAvanzamento;
 
         // ==========================================
         // FUNZIONI DI VISUALIZZAZIONE
@@ -1059,22 +1212,61 @@
                 }
                 
                 dashboardHtml += `</div>`;
+
+                // ==========================================
+                // P3 — CHE TIPO DI GIOCATORE PUNTARE ADESSO
+                //
+                // L'agente calcola gia' questa indicazione
+                // (prossimaFasciaConsigliata): guarda i tier che ho gia'
+                // preso in questo ruolo, quanto budget resta davvero al
+                // netto della panchina da riempire, e su quello dice il tier
+                // del prossimo colpo. Finora viveva solo dentro il testo del
+                // report: qui diventa visibile senza doverlo generare.
+                //
+                // I prezzi vengono corretti sull'inflazione reale di questa
+                // asta quando ci sono abbastanza acquisti nel reparto per
+                // misurarla; se il calcolo non e' disponibile la riga
+                // semplicemente non compare, senza rompere il resto.
+                // ==========================================
+                try {
+                    const faseAttuale = calcolaFaseCorrente();
+                    if (faseAttuale && typeof AI_AGENT !== 'undefined' &&
+                        AI_AGENT.prossimaFasciaConsigliata &&
+                        typeof PLAYERS_DATA !== 'undefined') {
+
+                        let inflazioneFase = null;
+                        try {
+                            const m = AI_AGENT.mercatoPerReparto(teams, PLAYERS_DATA, 1);
+                            inflazioneFase = (m && m.inflazionePerReparto)
+                                ? m.inflazionePerReparto[faseAttuale] : null;
+                        } catch (e) { /* inflazione non calcolabile: si usa il listino */ }
+
+                        const pf = AI_AGENT.prossimaFasciaConsigliata(
+                            myTeam, currentStrategy, faseAttuale,
+                            PLAYERS_DATA, inflazioneFase, null
+                        );
+
+                        if (pf && pf.messaggio) {
+                            const completo = !!pf.completo;
+                            dashboardHtml += `
+                                <div style="border-top: 1px solid #334155; padding-top: 8px; margin-top: 8px;">
+                                    <div style="font-size: 10px; color: ${completo ? '#4ade80' : '#fbbf24'}; font-weight: 600; margin-bottom: 4px;">
+                                        ${completo ? '✅ TARGET' : '🎯 PROSSIMO TARGET'}
+                                    </div>
+                                    <div style="font-size: 11px; color: #e2e8f0; line-height: 1.5;">
+                                        ${escapeHtml(pf.messaggio)}
+                                    </div>
+                                </div>`;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('prossimaFasciaConsigliata non disponibile:', e);
+                }
+
                 dashboardPanel.innerHTML = dashboardHtml;
             }
 
-            const list = document.getElementById('mySquadList');
-            if (myTeam.players.length === 0) {
-                list.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Nessun giocatore ancora</div>';
-            } else {
-                list.innerHTML = myTeam.players.map(p => `
-                    <div class="squad-player">
-                        <span class="name">${p.name}</span>
-                        <span class="role">${p.role}</span>
-                        <span class="price">${p.price}M</span>
-                        <button class="remove-btn team-button" onclick="removeFromMySquad(${p.id})">✕</button>
-                    </div>
-                `).join('');
-            }
+            renderLeagueDashboard();
 
             // INDICATORE DI FASE nell'header
             const faseEl = document.getElementById('faseIndicator');
@@ -1093,7 +1285,94 @@
                     faseEl.style.color = '#10b981';
                 }
             }
+
+            // P5 — avanzamento reparto + avanzamento totale
+            const progEl = document.getElementById('astaProgress');
+            if (progEl) {
+                const av = calcolaAvanzamento();
+                if (av.fase) {
+                    progEl.innerHTML =
+                        `<span style="color:#93c5fd;">${av.fase}</span> ` +
+                        `${av.fasePresi}/${av.faseSlot} (${av.fasePct}%)` +
+                        `<span style="color:#475569;"> · </span>` +
+                        `<span style="color:#94a3b8;">asta</span> ` +
+                        `${av.totPresi}/${av.totSlot} (${av.totPct}%)`;
+                } else {
+                    progEl.innerHTML = `<span style="color:#10b981;">200/200 (100%)</span>`;
+                }
+            }
         }
+
+        /**
+         * P9 — DASHBOARD DELLE 8 SQUADRE.
+         *
+         * Sostituisce la vecchia lista "I miei giocatori", che ripeteva
+         * quello che si vede gia' nella Panoramica Squadre. Qui invece
+         * stanno, per tutte e otto, i tre numeri che servono a leggere il
+         * tavolo mentre si chiama: quanto hanno speso, quanto gli resta, e
+         * quanti slot hanno riempito ruolo per ruolo (non x/25, che non dice
+         * nulla in un'asta a reparti).
+         *
+         * In piu' due indicazioni che in asta contano piu' del budget nudo:
+         *   - MAX: la piu' alta offerta che quella squadra puo' ancora fare
+         *     tenendo 1 credito per ogni slot che le resta da riempire. E'
+         *     il vero tetto di un avversario, non il budget residuo.
+         *   - il chipleader per budget residuo, evidenziato.
+         */
+        function renderLeagueDashboard() {
+            const box = document.getElementById('leagueDashboard');
+            if (!box) return;
+
+            const ordine = orderConfirmed ? teamOrder : [1, 2, 3, 4, 5, 6, 7, 8];
+            const fase = calcolaFaseCorrente();
+
+            // Chipleader = chi ha piu' budget residuo (a parita', chi ha piu'
+            // slot ancora liberi, perche' quel budget deve coprirne di piu').
+            let leader = null, maxBudget = -1;
+            ordine.forEach(i => {
+                const t = teams[i];
+                if (t && t.budget > maxBudget) { maxBudget = t.budget; leader = i; }
+            });
+
+            let html = '';
+            ordine.forEach(i => {
+                const t = teams[i];
+                if (!t) return;
+
+                const isMine = i === 1;
+                const isLeader = i === leader && t.budget > 0;
+                const spentPct = Math.round((t.spent / BUDGET_TOTAL) * 100);
+                const budgetPct = Math.round((t.budget / BUDGET_TOTAL) * 100);
+
+                const slotLiberi = PLAYERS_PER_SQUAD - t.players.length;
+                // Tenendo 1 credito per ogni altro slot da riempire
+                const maxOfferta = Math.max(0, t.budget - Math.max(0, slotLiberi - 1));
+
+                let ruoliHtml = '';
+                ROLE_ORDER.forEach(role => {
+                    const n = t.players.filter(p => p.role === role).length;
+                    const lim = ROLE_LIMITS[role];
+                    const pieno = n >= lim;
+                    const inFase = role === fase;
+                    ruoliHtml += `<span class="ld-role${pieno ? ' full' : ''}${inFase ? ' now' : ''}">` +
+                                 `${role.charAt(0)}<b>${n}</b>/${lim}</span>`;
+                });
+
+                html += `
+                    <div class="ld-card${isMine ? ' mine' : ''}${isLeader ? ' leader' : ''}">
+                        <div class="ld-name">${escapeHtml(t.name)}${isLeader ? ' <span class="ld-crown" title="Piu\' budget residuo">♛</span>' : ''}</div>
+                        <div class="ld-figures">
+                            <span class="ld-spent">${t.spent}<i>M</i> <em>${spentPct}%</em></span>
+                            <span class="ld-budget">${t.budget}<i>M</i> <em>${budgetPct}%</em></span>
+                        </div>
+                        <div class="ld-roles">${ruoliHtml}</div>
+                        <div class="ld-max">max <b>${maxOfferta}</b>M</div>
+                    </div>`;
+            });
+
+            box.innerHTML = html;
+        }
+        window.renderLeagueDashboard = renderLeagueDashboard;
 
         function renderTeamsOverview() {
             const grid = document.getElementById('teamsGrid');
@@ -1221,7 +1500,7 @@
                                 <div class="value">${team.players.length}/${PLAYERS_PER_SQUAD}</div>
                             </div>
                         </div>
-                        <div class="team-players">
+                        <div class="team-players${overviewMode === 'expanded' ? ' overview-expanded' : ''}">
                             ${playersHtml || '<div style="color: #64748b; font-size: 12px;">Nessun giocatore ancora</div>'}
                         </div>
                         ${noteHtml}
@@ -1325,10 +1604,15 @@
                 const ora = isNaN(t) ? '' : t.toLocaleTimeString('it-IT');
                 const aperto = idx === 0; // il più recente già aperto
                 return `<div class="report-card">
-                    <button class="report-head" onclick="toggleReportCard(${r.id})">
-                        <span><b>#${r.id}</b> <span style="color:#64748b;">${ora}</span></span>
-                        <span id="repChev${r.id}">${aperto ? '▾' : '▸'}</span>
-                    </button>
+                    <div class="report-head-row">
+                        <button class="report-head" onclick="toggleReportCard(${r.id})">
+                            <span><b>#${r.id}</b> <span style="color:#64748b;">${ora}</span></span>
+                            <span id="repChev${r.id}">${aperto ? '▾' : '▸'}</span>
+                        </button>
+                        <button class="report-copy" id="repCopy${r.id}"
+                                title="Copia tutto il report #${r.id}"
+                                onclick="copiaReport(${r.id})">📋</button>
+                    </div>
                     <pre class="report-body" id="repBody${r.id}"
                          style="display:${aperto ? 'block' : 'none'};">${formatReportHtml(r.report)}</pre>
                 </div>`;
@@ -1344,6 +1628,53 @@
             if (c) c.textContent = aperto ? '▸' : '▾';
         }
 
+        /**
+         * P4 — COPIA UN INTERO REPORT NEGLI APPUNTI.
+         *
+         * Copia il testo grezzo salvato (r.report), non l'HTML formattato:
+         * e' quello che serve incollare altrove. Fallback su textarea +
+         * execCommand perche' navigator.clipboard non e' disponibile ovunque
+         * (in particolare su pagine non-https o su alcuni browser mobili).
+         */
+        function copiaReport(id) {
+            const r = getReports().find(x => x.id === id);
+            if (!r) { showMessage('Report #' + id + ' non trovato.', 'error'); return; }
+
+            const testo = r.report || '';
+            const conferma = () => {
+                const b = document.getElementById('repCopy' + id);
+                if (b) {
+                    const prima = b.textContent;
+                    b.textContent = '✅';
+                    setTimeout(() => { b.textContent = prima; }, 1500);
+                }
+                showMessage('Report #' + id + ' copiato negli appunti.', 'success');
+            };
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(testo).then(conferma).catch(() => copiaFallback(testo, conferma));
+            } else {
+                copiaFallback(testo, conferma);
+            }
+        }
+
+        function copiaFallback(testo, poi) {
+            const ta = document.createElement('textarea');
+            ta.value = testo;
+            ta.style.position = 'fixed';
+            ta.style.opacity = '0';
+            document.body.appendChild(ta);
+            ta.select();
+            try {
+                document.execCommand('copy');
+                poi();
+            } catch (e) {
+                showMessage('Copia non riuscita: seleziona il testo manualmente.', 'error');
+            }
+            document.body.removeChild(ta);
+        }
+
+        window.copiaReport = copiaReport;
         window.toggleReportLive = toggleReportLive;
         window.toggleReportCard = toggleReportCard;
         /** Svuota i report senza toccare l'asta in corso. */
@@ -1669,6 +2000,55 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             filterAvailable();
         }
 
+        /**
+         * P7 — FILTRO SUGLI SPECIALISTI DEI PIAZZATI.
+         *
+         * Legge il campo setPieces del listone (array con voci tipo
+         * RIGORISTA, PUNIZIONI, ANGOLI). I due bottoni sono in OR fra loro:
+         * selezionandoli entrambi si vede chi tira rigori OPPURE punizioni,
+         * che e' come si ragiona al tavolo ("chi ha bonus da fermo?").
+         */
+        function toggleSetPieceFilter(tipo, button) {
+            if (activeSetPieces.has(tipo)) {
+                activeSetPieces.delete(tipo);
+                button.classList.remove('active');
+            } else {
+                activeSetPieces.add(tipo);
+                button.classList.add('active');
+            }
+            filterAvailable();
+        }
+        window.toggleSetPieceFilter = toggleSetPieceFilter;
+
+        /**
+         * Vero se il giocatore e' uno specialista del tipo di piazzato chiesto.
+         *
+         * NON basta guardare setPieces: nel listone e' valorizzato solo su 39
+         * giocatori su 531, e in due formati diversi ("RIGORISTA" oppure
+         * "rigori 70.0%"). I campi penaltyProbability (59 giocatori) e
+         * freeKickProbability (63) coprono di piu' e catturano casi che
+         * setPieces si perde — Modric e Mandragora hanno probabilita' 70 sulle
+         * punizioni e setPieces vuoto. Qui si usa l'unione dei due segnali.
+         *
+         * Attenzione al significato di penaltyProbability: come da mappa dati,
+         * NON e' la percentuale di realizzazione, e' la quota di rigori della
+         * squadra che quel giocatore calcerebbe (per squadra sommano ~100).
+         */
+        const SOGLIA_PIAZZATI = 20; // sotto questa quota non e' un vero designato
+
+        function haPiazzati(p, richiesti) {
+            const sp = Array.isArray(p.setPieces)
+                ? p.setPieces.map(x => String(x).trim().toUpperCase())
+                : (p.setPieces ? [String(p.setPieces).toUpperCase()] : []);
+
+            for (const tipo of richiesti) {
+                if (sp.some(v => v.indexOf(tipo) !== -1)) return true;
+                if (tipo === 'RIGOR' && (p.penaltyProbability || 0) >= SOGLIA_PIAZZATI) return true;
+                if (tipo === 'PUNIZION' && (p.freeKickProbability || 0) >= SOGLIA_PIAZZATI) return true;
+            }
+            return false;
+        }
+
         // GIOCATORI DISPONIBILI
         function initializeTeamFilter() {
             const teamSelect = document.getElementById('filterTeam');
@@ -1711,6 +2091,8 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 // Filtra per bottoni selezionati (se ce ne sono)
                 if (activeRoles.size > 0 && !activeRoles.has(p.role)) return false;
                 if (teamFilter && p.team !== teamFilter) return false;
+                // P7 — specialisti dei piazzati (rigoristi / punizioni)
+                if (activeSetPieces.size > 0 && !haPiazzati(p, activeSetPieces)) return false;
                 return true;
             });
 
@@ -1826,32 +2208,30 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
         // ==========================================
         // TOGGLE OVERVIEW MODE (Compact/Expanded)
         // ==========================================
-        let overviewMode = 'expanded'; // default expanded
 
+        /**
+         * P2 — BUG CORRETTO: l'espansione non reggeva agli acquisti.
+         *
+         * Prima questa funzione applicava lo stile direttamente sui div
+         * gia' presenti nella pagina. Funzionava finche' non si comprava
+         * qualcuno: renderTeamsOverview() rifa' da zero l'innerHTML della
+         * griglia, e i div nuovi nascevano senza quella classe, tornando al
+         * max-height di 150px del CSS — cioe' alla barra di scorrimento,
+         * anche con l'interruttore ancora su "Espanso".
+         *
+         * Ora lo stato vive solo in overviewMode e viene riapplicato dal
+         * render, quindi sopravvive a ogni acquisto e a ogni re-render.
+         */
         function toggleOverviewMode() {
             const label = document.getElementById('toggleLabel');
             const checkbox = document.getElementById('toggleViewCheckbox');
-            const players = document.querySelectorAll('.team-players');
-            
-            if (overviewMode === 'expanded') {
-                overviewMode = 'compact';
-                label.textContent = 'Compatto';
-                checkbox.checked = false;
-                players.forEach(p => {
-                    p.classList.remove('overview-expanded');
-                    p.style.maxHeight = '150px';
-                    p.style.overflowY = 'auto';
-                });
-            } else {
-                overviewMode = 'expanded';
-                label.textContent = 'Espanso';
-                checkbox.checked = true;
-                players.forEach(p => {
-                    p.classList.add('overview-expanded');
-                    p.style.maxHeight = 'none';
-                    p.style.overflowY = 'visible';
-                });
-            }
+
+            overviewMode = (overviewMode === 'expanded') ? 'compact' : 'expanded';
+
+            if (label) label.textContent = (overviewMode === 'expanded') ? 'Espanso' : 'Compatto';
+            if (checkbox) checkbox.checked = (overviewMode === 'expanded');
+
+            renderTeamsOverview();
         }
 
         // ==========================================

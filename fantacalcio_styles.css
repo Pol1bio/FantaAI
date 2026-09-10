@@ -167,8 +167,8 @@ header h1 {
 
 .filter-row {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr 1fr;
-    gap: 15px;
+    grid-template-columns: 1.5fr 1fr 0.9fr 1.1fr 1.4fr;
+    gap: 12px;
 }
 
 .filter-item {
@@ -1325,3 +1325,120 @@ input:checked + .toggle-slider:before {
 #playerInfo div[style*="border-top"] div[style*="font-size:10px"] {
     font-size: 11px !important;
 }
+
+
+/* ==========================================
+   P9 — DASHBOARD DELLE 8 SQUADRE
+   Sostituisce la vecchia lista "I miei giocatori".
+   2 colonne x 4 righe: e' l'unica disposizione che entra
+   nella colonna laterale senza comprimere i numeri.
+   ========================================== */
+.league-dashboard {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 20px;
+}
+
+.ld-card {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 4px;
+    padding: 6px 7px;
+    font-size: 10px;
+    line-height: 1.35;
+}
+
+.ld-card.mine {
+    border-color: #3b82f6;
+    background: #0f1e3a;
+}
+
+.ld-card.leader {
+    border-color: #eab308;
+}
+
+.ld-name {
+    font-weight: 700;
+    color: #e2e8f0;
+    font-size: 10.5px;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.ld-crown { color: #eab308; }
+
+.ld-figures {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    margin-bottom: 3px;
+}
+
+.ld-figures span { white-space: nowrap; }
+.ld-figures i { font-style: normal; opacity: 0.55; }
+.ld-figures em {
+    font-style: normal;
+    opacity: 0.6;
+    font-size: 9px;
+}
+
+.ld-spent { color: #f87171; }
+.ld-budget { color: #4ade80; }
+
+.ld-roles {
+    display: flex;
+    gap: 3px;
+    margin-bottom: 3px;
+}
+
+.ld-role {
+    flex: 1;
+    text-align: center;
+    background: #1e293b;
+    border-radius: 2px;
+    padding: 1px 0;
+    color: #94a3b8;
+    font-size: 9px;
+}
+
+.ld-role b { color: #cbd5e1; font-weight: 700; }
+.ld-role.full { background: #14532d; color: #86efac; }
+.ld-role.full b { color: #bbf7d0; }
+.ld-role.now { outline: 1px solid #3b82f6; }
+
+.ld-max {
+    color: #fbbf24;
+    font-size: 9.5px;
+    text-align: right;
+}
+
+.ld-max b { font-weight: 700; }
+
+/* ==========================================
+   P4 — BOTTONE COPIA SUL SINGOLO REPORT
+   ========================================== */
+.report-head-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+}
+
+.report-head-row .report-head {
+    flex: 1;
+}
+
+.report-copy {
+    background: #1e293b;
+    border: none;
+    border-left: 1px solid #0f172a;
+    color: #93c5fd;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 0 10px;
+    line-height: 1;
+}
+
+.report-copy:hover { background: #263449; }
