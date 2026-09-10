@@ -1040,15 +1040,79 @@
         });
     }
 
-    /** Giocatori che il mercato paghera' molto piu' di quanto valgono. */
+    /**
+     * Giocatori che il mercato paghera' molto piu' di quanto valgono.
+     *
+     * RISCRITTA. Prima filtrava su valueScore < 30 e ordinava per
+     * valueScore crescente — lo stesso campo del listone gia' riconosciuto
+     * come inaffidabile e sostituito da convenienza() altrove. Il risultato
+     * era peggio che inutile: fra le "trappole" comparivano McTominay
+     * (3o su 192 centrocampisti per punti attesi), Rabiot (8o), Frattesi
+     * (10o), Soule' (13o su 87 attaccanti). Sette segnalazioni su dieci
+     * erano ottimi giocatori, e una era il centrocampista poi comprato.
+     *
+     * Ora una trappola e' definita per quello che significa davvero:
+     * un giocatore CARO rispetto ai suoi pari di ruolo ma SCARSO rispetto
+     * agli stessi pari per resa attesa. Si confrontano due posizioni dentro
+     * lo stesso reparto — quella per prezzo e quella per punti attesi da
+     * convenienza() — e si segnala chi sta molto piu' in alto nella prima
+     * che nella seconda. Nessun campo inaffidabile, e il confronto e'
+     * sempre fra simili.
+     */
     trappole(availables, limit) {
-      return availables
-        .filter((p) => (p.pma || 0) >= 8 &&
-                       p.valueScore !== null && p.valueScore !== undefined &&
-                       p.valueScore < 30)
-        .sort((a, b) => (a.valueScore || 0) - (b.valueScore || 0))
-        .slice(0, limit || 8)
-        .map((p) => this.playerCard(p));
+      const perRuolo = {};
+      availables.forEach((p) => {
+        (perRuolo[p.role] = perRuolo[p.role] || []).push(p);
+      });
+
+      const segnalati = [];
+
+      Object.keys(perRuolo).forEach((role) => {
+        const tuttiDelRuolo = perRuolo[role];
+        // Solo giocatori con un prezzo vero: sotto gli 8 crediti non si
+        // puo' "strapagare" nulla in modo significativo.
+        const cari = tuttiDelRuolo.filter((p) => (p.pma || 0) >= 8);
+        if (cari.length < 6) return;
+
+        const resa = new Map();
+        cari.forEach((p) => {
+          let v = 0;
+          try {
+            const c = this.convenienza(p, tuttiDelRuolo);
+            v = (c && c.puntiAttesi) || 0;
+          } catch (e) { v = 0; }
+          resa.set(p.id, v);
+        });
+
+        const posPrezzo = new Map();
+        cari.slice().sort((a, b) => (b.pma || 0) - (a.pma || 0))
+            .forEach((p, i) => posPrezzo.set(p.id, i + 1));
+
+        const posResa = new Map();
+        cari.slice().sort((a, b) => resa.get(b.id) - resa.get(a.id))
+            .forEach((p, i) => posResa.set(p.id, i + 1));
+
+        cari.forEach((p) => {
+          const pp = posPrezzo.get(p.id);
+          const pr = posResa.get(p.id);
+          // Quanto scivola indietro passando dal prezzo alla resa, in
+          // proporzione al numero di pari: cosi' reparti di dimensioni
+          // diverse restano confrontabili.
+          const scarto = (pr - pp) / cari.length;
+          if (scarto >= 0.25) {
+            segnalati.push({ p: p, scarto: scarto, pp: pp, pr: pr, tot: cari.length });
+          }
+        });
+      });
+
+      segnalati.sort((a, b) => b.scarto - a.scarto);
+
+      return segnalati.slice(0, limit || 8).map((x) => {
+        const c = this.playerCard(x.p);
+        c.perche = x.pp + 'o piu\' caro fra i ' + x.tot + ' ' + x.p.role +
+                   ' sopra gli 8 crediti, ma solo ' + x.pr + 'o per resa attesa';
+        return c;
+      });
     }
 
     // --------------------------------------------------------------- schede
@@ -1063,7 +1127,14 @@
         tier: p.tierConsensus || p.tier,
         accordoFonti: p.tierAgreement,
         qualita: p.qualityScore,
-        convenienza: p.valueScore,
+        /**
+         * NON e' la convenienza: e' il campo grezzo del listone, tenuto solo
+         * come riferimento. La convenienza vera si calcola con
+         * convenienza(), che ha bisogno dei pari di ruolo per confrontare.
+         * Chiamarlo 'convenienza' qui faceva finire un numero inaffidabile
+         * in ogni scheda e nel riquadro del giocatore nell'app.
+         */
+        convenienzaListone: p.valueScore,
         verdetto: p.verdict,
         prezzoMercato: p.pma,
         /**

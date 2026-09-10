@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.36 - APP LOGIC
+        // FANTACALCIO v3.9.9.37 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.36';
+        const APP_VERSION = '3.9.9.37';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -856,8 +856,31 @@
                 `<span style="font-size:11px;color:#94a3b8;">${label} <b style="color:${color};">${val}</b></span>`;
             const chips = [];
             if (p.qualityScore != null) chips.push(chip('Qualità', Math.round(p.qualityScore), '#e2e8f0'));
-            if (p.valueScore != null) chips.push(chip('Convenienza', Math.round(p.valueScore),
-                p.valueScore >= 80 ? '#4ade80' : '#e2e8f0'));
+
+            /**
+             * "Convenienza" mostrava Math.round(p.valueScore), cioe' il campo
+             * inaffidabile del listone: due giocatori quasi identici per
+             * prezzo e resa risultavano 18 e 95. Ora l'indicatore e' la resa
+             * attesa a stagione calcolata da AI_AGENT.convenienza(), la stessa
+             * che ordina il bottone VALORE — cosi' scheda e ordinamento
+             * dicono la stessa cosa invece di contraddirsi.
+             */
+            try {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.convenienza &&
+                    typeof PLAYERS_DATA !== 'undefined') {
+                    const pari = PLAYERS_DATA.filter(x => x.role === p.role);
+                    const cv = AI_AGENT.convenienza(p, pari);
+                    if (cv && cv.puntiAttesi != null) {
+                        chips.push(chip('Resa attesa', cv.puntiAttesi + ' pt',
+                            cv.puntiAttesi >= 25 ? '#4ade80'
+                          : cv.puntiAttesi >= 10 ? '#fbbf24' : '#e2e8f0'));
+                    }
+                    if (cv && cv.posizionePerEfficienza && cv.suQuanti) {
+                        chips.push(chip('Efficienza',
+                            cv.posizionePerEfficienza + 'º/' + cv.suQuanti, '#e2e8f0'));
+                    }
+                }
+            } catch (e) { /* scheda comunque utilizzabile senza questi indicatori */ }
             if (tit != null) chips.push(chip('Titolarità', tit + '%',
                 tit >= 80 ? '#4ade80' : tit >= 60 ? '#fbbf24' : '#f87171'));
             if (chips.length) {
