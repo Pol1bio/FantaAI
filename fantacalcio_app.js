@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.35 - APP LOGIC
+        // FANTACALCIO v3.9.9.36 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.35';
+        const APP_VERSION = '3.9.9.36';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -691,8 +691,12 @@
         }
 
         function selectTeam(teamNum, btn) {
-            document.querySelectorAll('.team-button').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
+            // La classe evidenziata dal CSS e' '.team-button.active'.
+            // Qui si usava 'selected', che nel foglio di stile non esiste:
+            // la squadra veniva selezionata davvero, ma il bottone non si
+            // accendeva e non si capiva quale fosse scelta.
+            document.querySelectorAll('.team-button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
             selectedTeam = teamNum;
         }
 
@@ -1897,7 +1901,7 @@
             document.getElementById('playerInfo').style.display = 'none';
             selectedPlayer = null;
             selectedTeam = null;
-            document.querySelectorAll('.team-button').forEach(b => b.classList.remove('selected'));
+            document.querySelectorAll('.team-button').forEach(b => b.classList.remove('active'));
             document.getElementById('messageDiv').innerHTML = '';
         }
 
@@ -1926,88 +1930,6 @@
         }
 
         // AGENTE IA
-        async function askAI() {
-            const question = document.getElementById('aiQuestion').value.trim();
-            if (!question) return;
-
-            const chatHistory = document.getElementById('chatHistory');
-            const errorDiv = document.getElementById('aiError');
-            errorDiv.style.display = 'none';
-
-            conversationHistory.push({ role: 'user', content: question });
-            chatHistory.innerHTML += `
-                <div class="message user">
-                    <div class="content">${escapeHtml(question)}</div>
-                </div>
-            `;
-            document.getElementById('aiQuestion').value = '';
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-
-            chatHistory.innerHTML += `<div class="message assistant"><div class="content loading">🤔 Sto pensando...</div></div>`;
-            chatHistory.scrollTop = chatHistory.scrollHeight;
-
-            try {
-                let teamsContext = '';
-                for (let i = 1; i <= 8; i++) {
-                    const t = teams[i];
-                    teamsContext += `${t.name}: ${t.spent}M spesi (${((t.spent / BUDGET_TOTAL) * 100).toFixed(1)}%), ${t.budget}M rimasti, ${t.players.length}/25 giocatori\n`;
-                }
-
-                const systemPrompt = `Sei un esperto di fantacalcio italiano. Analizza l'asta in tempo reale e dai consigli rapidi.
-
-STATO ASTA:
-${teamsContext}
-
-La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. Sempre includi percentuali nelle tue risposte. Rispondi in modo conciso e pratico.`;
-
-                const response = await fetch('https://api.anthropic.com/v1/messages', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        model: 'claude-sonnet-4-6',
-                        max_tokens: 400,
-                        system: systemPrompt,
-                        messages: conversationHistory
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Errore API: ${response.status}`);
-                }
-
-                const data = await response.json();
-                const assistantMessage = data.content[0].text;
-
-                const messages = chatHistory.querySelectorAll('.message');
-                messages[messages.length - 1].remove();
-
-                conversationHistory.push({ role: 'assistant', content: assistantMessage });
-                chatHistory.innerHTML += `
-                    <div class="message assistant">
-                        <div class="content">${escapeHtml(assistantMessage)}</div>
-                    </div>
-                `;
-                chatHistory.scrollTop = chatHistory.scrollHeight;
-
-            } catch (error) {
-                console.error('Errore:', error);
-                const messages = chatHistory.querySelectorAll('.message');
-                messages[messages.length - 1].remove();
-                
-                errorDiv.style.display = 'block';
-                errorDiv.innerHTML = `⚠️ ${error.message}`;
-            }
-        }
-
-        function escapeHtml(text) {
-            const map = {
-                '&': '&amp;', '<': '&lt;', '>': '&gt;',
-                '"': '&quot;', "'": '&#039;'
-            };
-            return text.replace(/[&<>"']/g, m => map[m]);
-        }
 
         /**
          * Grassetto per titoli di sezione e righe gia' segnalate come
@@ -2035,6 +1957,14 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
          * Serve per nomi come N'DICKA e N'DRI: senza questo l'apostrofo
          * chiude la stringa JS e il click sulla riga non funziona.
          */
+        function escapeHtml(text) {
+            const map = {
+                '&': '&amp;', '<': '&lt;', '>': '&gt;',
+                '"': '&quot;', "'": '&#039;'
+            };
+            return String(text == null ? '' : text).replace(/[&<>"']/g, m => map[m]);
+        }
+
         function escapeAttr(text) {
             return String(text == null ? '' : text)
                 .replace(/\\/g, '\\\\')
