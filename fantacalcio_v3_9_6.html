@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asta Fantacalcio v3.9.9.25</title>
+    <title>Asta Fantacalcio v3.9.9.26</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=39926">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=39927">
 </head>
 <body>
     <div class="container">
         <header>
             <h1 id="appTitle">Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.25</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.26</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
                 <span id="astaProgress" style="font-size:11px;font-family:monospace;color:#cbd5e1;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.07);"></span>
             </div>
@@ -175,46 +175,6 @@
                     <h3 style="margin-top: 0;">Squadre della lega</h3>
                     <div id="leagueDashboard" class="league-dashboard"></div>
 
-                    <h2 style="margin-top: 4px;"><span id="myTeamName">Squadra 1</span></h2>
-
-                    <div class="squad-stats">
-                        <div class="stat-box">
-                            <div class="stat-label">Speso</div>
-                            <div class="stat-value" id="mySpent">0</div>
-                            <div class="stat-percentage" id="mySpentPct">0%</div>
-                        </div>
-                        <div class="stat-box">
-                            <div class="stat-label">Budget Rimasto</div>
-                            <div class="stat-value" id="budgetLeft">500</div>
-                            <div class="stat-percentage" id="budgetLeftPct">100%</div>
-                        </div>
-                    </div>
-
-                    <div style="background: #0f172a; padding: 12px; border-radius: 4px; text-align: center; margin-bottom: 20px; font-size: 13px;">
-                        <span style="color: #94a3b8;">Giocatori: </span>
-                        <span id="playerCount" style="color: #60a5fa; font-weight: bold;">0/25</span>
-                    </div>
-
-                    <h3>Per Ruolo</h3>
-                    <div class="role-stats">
-                        <div class="role-stat">
-                            <div class="label">Portieri</div>
-                            <div class="count" id="count-POR">0/3</div>
-                        </div>
-                        <div class="role-stat">
-                            <div class="label">Difensori</div>
-                            <div class="count" id="count-DIF">0/8</div>
-                        </div>
-                        <div class="role-stat">
-                            <div class="label">Centrocampisti</div>
-                            <div class="count" id="count-CEN">0/8</div>
-                        </div>
-                        <div class="role-stat">
-                            <div class="label">Attaccanti</div>
-                            <div class="count" id="count-ATT">0/6</div>
-                        </div>
-                    </div>
-
                     <div id="strategicDashboard" style="background: #1e293b; padding: 12px; border-radius: 4px; border: 1px solid #334155; font-size: 11px; line-height: 1.6;"></div>
 
                     <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid #334155; margin-bottom: 15px;">
@@ -227,8 +187,54 @@
                         </div>
                     </div>
 
+                    <!-- I miei numeri: utili da controllare, ma non da tenere
+                         sempre sotto gli occhi durante l'asta. Speso e budget
+                         si leggono gia' nel riquadro della lega qui sopra. -->
+                    <div class="mysquad-collapse">
+                        <button class="mysquad-toggle" onclick="toggleMySquadPanel()">
+                            <span id="myTeamName">Squadra 1</span>
+                            <span id="mySquadChevron" style="float:right;">&#9656;</span>
+                        </button>
+                        <div id="mySquadBody" class="mysquad-body" style="display:none;">
+                            <div class="squad-stats">
+                                <div class="stat-box">
+                                    <div class="stat-label">Speso</div>
+                                    <div class="stat-value" id="mySpent">0</div>
+                                    <div class="stat-percentage" id="mySpentPct">0%</div>
+                                </div>
+                                <div class="stat-box">
+                                    <div class="stat-label">Budget Rimasto</div>
+                                    <div class="stat-value" id="budgetLeft">500</div>
+                                    <div class="stat-percentage" id="budgetLeftPct">100%</div>
+                                </div>
+                            </div>
 
-                    <button onclick="clearMySquad()" class="secondary" style="width: 100%;">Cancella Squadra</button>
+                            <div style="background: #0f172a; padding: 10px; border-radius: 4px; text-align: center; margin-bottom: 12px; font-size: 13px;">
+                                <span style="color: #94a3b8;">Giocatori: </span>
+                                <span id="playerCount" style="color: #60a5fa; font-weight: bold;">0/25</span>
+                            </div>
+
+                            <h3 style="margin-top: 0;">Per Ruolo</h3>
+                            <div class="role-stats">
+                                <div class="role-stat">
+                                    <div class="label">Portieri</div>
+                                    <div class="count" id="count-POR">0/3</div>
+                                </div>
+                                <div class="role-stat">
+                                    <div class="label">Difensori</div>
+                                    <div class="count" id="count-DIF">0/8</div>
+                                </div>
+                                <div class="role-stat">
+                                    <div class="label">Centrocampisti</div>
+                                    <div class="count" id="count-CEN">0/8</div>
+                                </div>
+                                <div class="role-stat">
+                                    <div class="label">Attaccanti</div>
+                                    <div class="count" id="count-ATT">0/6</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -287,10 +293,10 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=39926"></script>
-    <script src="storico_fantalissandria.js?v=39926"></script>
-    <script src="infortuni_serie_a.js?v=39926"></script>
-    <script src="fantacalcio_app.js?v=39926"></script>
-    <script src="fantacalcio_ai.js?v=39926"></script>
+    <script src="players_data.js?v=39927"></script>
+    <script src="storico_fantalissandria.js?v=39927"></script>
+    <script src="infortuni_serie_a.js?v=39927"></script>
+    <script src="fantacalcio_app.js?v=39927"></script>
+    <script src="fantacalcio_ai.js?v=39927"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.25 - APP LOGIC
+        // FANTACALCIO v3.9.9.26 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1567,6 +1567,33 @@
         window.toggleNotePanel = toggleNotePanel;
         window.toggleNotaPattern = toggleNotaPattern;
         window.salvaNotaTesto = salvaNotaTesto;
+
+        /**
+         * Pannello "la mia squadra", ora collassabile e in fondo alla colonna.
+         *
+         * Speso, budget e conteggi per ruolo si leggono gia' nel riquadro
+         * della lega in cima (dove la propria squadra e' evidenziata), quindi
+         * qui restano come approfondimento e non come intestazione fissa.
+         * Lo stato aperto/chiuso e' ricordato fra una sessione e l'altra:
+         * durante un'asta si tiene chiuso, a tavolino puo' far comodo aperto.
+         */
+        function toggleMySquadPanel() {
+            const body = document.getElementById('mySquadBody');
+            const chev = document.getElementById('mySquadChevron');
+            if (!body) return;
+            const aperto = body.style.display !== 'none';
+            body.style.display = aperto ? 'none' : 'block';
+            if (chev) chev.innerHTML = aperto ? '&#9656;' : '&#9662;';
+            try { localStorage.setItem('mySquadAperto', aperto ? '0' : '1'); } catch (e) {}
+        }
+        window.toggleMySquadPanel = toggleMySquadPanel;
+
+        // Ripristina lo stato scelto l'ultima volta
+        document.addEventListener('DOMContentLoaded', () => {
+            let aperto = false;
+            try { aperto = localStorage.getItem('mySquadAperto') === '1'; } catch (e) {}
+            if (aperto) toggleMySquadPanel();
+        });
 
         /** Sezione Utility collassabile: fuori dal flusso principale dell'asta. */
         function toggleUtility() {
