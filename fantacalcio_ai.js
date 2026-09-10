@@ -1589,27 +1589,73 @@
         };
       }
 
+      /**
+       * CORREZIONE (asta del 9 settembre: l'indicatore non ha mai dedotto
+       * nulla in tutta l'asta, restando su TROPPO PRESTO e INDIZI DEBOLI).
+       *
+       * Verificato sui dati reali dell'asta conclusa: anche a reparti TUTTI
+       * chiusi, cioe' con informazione completa, la confidenza risultava 0%
+       * per 6 squadre su 8. La soglia del 50% era irraggiungibile.
+       *
+       * Due difetti sommati:
+       *
+       * 1. La distanza era una SOMMA sui reparti chiusi divisa per una
+       *    costante fissa (20). Piu' reparti si chiudevano, piu' la somma
+       *    cresceva, piu' l'aderenza scendeva: l'indicatore diventava meno
+       *    sicuro man mano che raccoglieva informazioni. Al contrario di
+       *    come dovrebbe comportarsi. Ora la distanza e' MEDIA per reparto,
+       *    quindi confrontabile fra un reparto chiuso e quattro.
+       *
+       * 2. La copertura moltiplicava tutto: con un solo reparto chiuso il
+       *    massimo teorico era 25%, con due 50%. Sotto la soglia di 50 per
+       *    costruzione fino a tre reparti su quattro. Ora la copertura pesa
+       *    ma non azzera (da 0.45 a 1), perche' un reparto chiuso qualche
+       *    informazione la da' comunque.
+       *
+       * Resta vero che i fantallenatori reali si discostano dai quattro
+       * modelli piu' di quanto i modelli differiscano fra loro: per questo
+       * la confidenza va letta, non nascosta, e sotto il 25% si dichiara
+       * che gli indizi sono deboli invece di fingere una diagnosi.
+       */
       let best = null, bestDist = Infinity, secondDist = Infinity;
       Object.keys(this.strategies).forEach((k) => {
         const cfg = this.strategies[k];
+        // Scostamento MEDIO per reparto chiuso, in punti percentuali
         const dist = chiusi.reduce(
-          (d, r) => d + Math.abs(quote[r] - cfg[r] * 100), 0);
+          (d, r) => d + Math.abs(quote[r] - cfg[r] * 100), 0) / chiusi.length;
         if (dist < bestDist) { secondDist = bestDist; bestDist = dist; best = cfg; }
         else if (dist < secondDist) { secondDist = dist; }
       });
 
-      // La confidenza cresce con i reparti chiusi e con quanto la strategia
-      // vincente stacca la seconda: se due strategie spiegano i dati
-      // altrettanto bene, la deduzione vale poco.
       const copertura = chiusi.length / ROLES.length;
-      const aderenza = Math.max(0, 1 - bestDist / 20);
+      // 12 punti percentuali di scostamento medio = nessuna aderenza
+      const aderenza = Math.max(0, 1 - bestDist / 12);
       const distacco = (isFinite(secondDist) && secondDist > 0)
         ? Math.min(1, (secondDist - bestDist) / secondDist) : 0.5;
-      const confidence = Math.round(100 * copertura * aderenza * (0.5 + 0.5 * distacco));
+      const confidence = Math.round(
+        100 * (0.45 + 0.55 * copertura) * aderenza * (0.5 + 0.5 * distacco));
+
+      /**
+       * Quando nessun modello aderisce, dire COSA sta facendo davvero e'
+       * piu' utile che dire che non si sa: si segnala il reparto su cui
+       * sta spendendo piu' di quanto qualunque strategia preveda.
+       */
+      let sbilanciamento = null;
+      let eccessoMax = 0;
+      chiusi.forEach((r) => {
+        const attesoMax = Math.max.apply(null,
+          Object.keys(this.strategies).map((k) => this.strategies[k][r] * 100));
+        const eccesso = quote[r] - attesoMax;
+        if (eccesso > eccessoMax) { eccessoMax = eccesso; sbilanciamento = r; }
+      });
 
       return {
         squadra: nome,
-        strategy: confidence < 50 ? 'INDIZI DEBOLI' : best.name,
+        strategy: confidence < 25 ? 'INDIZI DEBOLI' : best.name,
+        certa: confidence >= 50,
+        sbilanciamento: sbilanciamento,
+        eccessoSbilanciamento: sbilanciamento ? round1(eccessoMax) : null,
+        scostamentoMedio: round1(bestDist),
         ipotesi: best.name,
         confidence: confidence,
         acquisti: players.length,

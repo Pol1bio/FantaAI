@@ -1423,6 +1423,15 @@ input:checked + .toggle-slider:before {
 }
 
 .ld-role b { color: #cbd5e1; font-weight: 700; }
+.ld-role em {
+    font-style: normal;
+    display: block;
+    font-size: 9px;
+    color: #f59e0b;
+    opacity: 0.85;
+    line-height: 1.2;
+}
+.ld-role.full em { color: #fcd34d; }
 .ld-role.full { background: #14532d; color: #86efac; }
 .ld-role.full b { color: #bbf7d0; }
 .ld-role.now { outline: 1px solid #3b82f6; }
@@ -1486,4 +1495,20 @@ input:checked + .toggle-slider:before {
 
 .mysquad-toggle:hover { background: #263449; }
 
-.mysquad-body { padding-top: 12px; }
+/* Chiuso, il pannello NON viene rimosso dal flusso: resta nel calcolo della
+   larghezza (contributo al min-content della colonna) e viene solo ritagliato
+   in altezza. Con display:none la colonna si restringeva alla chiusura e si
+   riallargava all'apertura, con un salto visibile a ogni click. Cosi' la
+   larghezza e' sempre quella massima, che e' anche lo spazio che serve per
+   far crescere i riquadri della lega. */
+.mysquad-body {
+    max-height: 0;
+    overflow: hidden;
+    padding-top: 0;
+    transition: max-height 0.2s ease, padding-top 0.2s ease;
+}
+
+.mysquad-body.aperto {
+    max-height: 1200px;
+    padding-top: 12px;
+}

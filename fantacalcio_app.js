@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.26 - APP LOGIC
+        // FANTACALCIO v3.9.9.28 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1352,12 +1352,18 @@
 
                 let ruoliHtml = '';
                 ROLE_ORDER.forEach(role => {
-                    const n = t.players.filter(p => p.role === role).length;
+                    const dentro = t.players.filter(p => p.role === role);
+                    const n = dentro.length;
                     const lim = ROLE_LIMITS[role];
                     const pieno = n >= lim;
                     const inFase = role === fase;
+                    // Quota di budget INIZIALE (500) finita in questo reparto:
+                    // e' il numero che rende confrontabili due squadre a
+                    // prescindere da quanto abbiano gia' speso in totale.
+                    const speso = dentro.reduce((s, p) => s + p.price, 0);
+                    const quota = Math.round((speso / BUDGET_TOTAL) * 100);
                     ruoliHtml += `<span class="ld-role${pieno ? ' full' : ''}${inFase ? ' now' : ''}">` +
-                                 `${role.charAt(0)}<b>${n}</b>/${lim}</span>`;
+                                 `${role.charAt(0)}<b>${n}</b>/${lim}<em>${quota}%</em></span>`;
                 });
 
                 html += `
@@ -1474,12 +1480,34 @@
                 let strategyHtml = '';
                 if (!isMyTeam && typeof AI_AGENT !== 'undefined' && AI_AGENT.inferOpponentStrategy) {
                     const inf = AI_AGENT.inferOpponentStrategy(team, i);
-                    const debole = ['NESSUN ACQUISTO', 'TROPPO PRESTO PER DIRLO', 'INDIZI DEBOLI']
+                    const muto = ['NESSUN ACQUISTO', 'TROPPO PRESTO PER DIRLO']
                         .includes(inf.strategy);
-                    strategyHtml = `<div class="team-strategy${debole ? ' weak' : ''}"
-                            title="${escapeHtml(inf.dettaglio || inf.nota || '')}">
-                        ${debole ? inf.strategy : `${inf.strategy} <span class="ts-conf">${inf.confidence}%</span>`}
-                    </div>`;
+
+                    // Sotto il 50% la diagnosi non e' certa, ma nasconderla
+                    // non aiuta: si mostra l'ipotesi preceduta da ~ e con la
+                    // confidenza accanto, cosi' si legge per quello che e'.
+                    let testo;
+                    if (muto) {
+                        testo = inf.strategy;
+                    } else if (inf.strategy === 'INDIZI DEBOLI') {
+                        testo = inf.sbilanciamento
+                            ? `SBILANCIATA SU ${inf.sbilanciamento}`
+                            : 'INDIZI DEBOLI';
+                    } else {
+                        testo = `${inf.certa ? '' : '~'}${inf.strategy}` +
+                                ` <span class="ts-conf">${inf.confidence}%</span>`;
+                    }
+
+                    const tip = [inf.dettaglio, inf.nota,
+                        inf.scostamentoMedio != null
+                            ? 'scostamento medio ' + inf.scostamentoMedio + ' punti' : null,
+                        inf.sbilanciamento
+                            ? 'spende su ' + inf.sbilanciamento + ' ' +
+                              inf.eccessoSbilanciamento + ' punti oltre ogni strategia' : null
+                    ].filter(Boolean).join(' · ');
+
+                    strategyHtml = `<div class="team-strategy${(muto || !inf.certa) ? ' weak' : ''}"
+                            title="${escapeHtml(tip)}">${testo}</div>`;
                 }
 
                 html += `
@@ -1581,10 +1609,13 @@
             const body = document.getElementById('mySquadBody');
             const chev = document.getElementById('mySquadChevron');
             if (!body) return;
-            const aperto = body.style.display !== 'none';
-            body.style.display = aperto ? 'none' : 'block';
-            if (chev) chev.innerHTML = aperto ? '&#9656;' : '&#9662;';
-            try { localStorage.setItem('mySquadAperto', aperto ? '0' : '1'); } catch (e) {}
+            // Si commuta una CLASSE, non display: con display:none il
+            // contenuto sparisce dal calcolo della larghezza e la colonna si
+            // restringe. Il CSS lo tiene sempre presente e lo ritaglia solo
+            // in altezza, cosi' la colonna resta larga uguale aperta o chiusa.
+            const aperto = body.classList.toggle('aperto');
+            if (chev) chev.innerHTML = aperto ? '&#9662;' : '&#9656;';
+            try { localStorage.setItem('mySquadAperto', aperto ? '1' : '0'); } catch (e) {}
         }
         window.toggleMySquadPanel = toggleMySquadPanel;
 
