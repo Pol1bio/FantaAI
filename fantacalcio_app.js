@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.24 - APP LOGIC
+        // FANTACALCIO v3.9.9.25 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -344,6 +344,8 @@
             localStorage.removeItem('fantacalcio_v3_1');
             localStorage.removeItem('fantacalcio_config_completed');
             localStorage.removeItem('astaReports');
+            azzeraNoteAvversari();
+            undoStack = [];
             teamNamesConfirmed = false;
             orderConfirmed = false;
             teamOrder = [];
@@ -1517,6 +1519,28 @@
         // Il testo libero non viene interpretato dal codice ma viaggia
         // nel report, quindi arriva a chi lo legge.
         // ==========================================
+        /**
+         * Azzera le note sugli avversari in modo completo.
+         *
+         * Serve un helper perche' le note vivono in DUE posti: la voce
+         * 'noteAvversari' in localStorage e la cache window.noteAvversari che
+         * getNote() consulta per prima. Togliendo solo la prima, le note
+         * tornerebbero comunque a comparire fino al ricaricamento della
+         * pagina. Si svuota anche l'elenco dei pannelli aperti, altrimenti
+         * dopo il reset i riquadri resterebbero espansi su note inesistenti.
+         */
+        function azzeraNoteAvversari() {
+            try {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.azzeraNote) {
+                    AI_AGENT.azzeraNote();
+                }
+            } catch (e) { /* si prosegue comunque con la pulizia diretta */ }
+            try { localStorage.removeItem('noteAvversari'); } catch (e) {}
+            if (typeof window !== 'undefined') window.noteAvversari = null;
+            notePanelAperti.clear();
+        }
+        window.azzeraNoteAvversari = azzeraNoteAvversari;
+
         function toggleNotePanel(teamNum) {
             if (notePanelAperti.has(teamNum)) notePanelAperti.delete(teamNum);
             else notePanelAperti.add(teamNum);
@@ -1721,6 +1745,18 @@
                 
                 // Resetta la conversazione con l'agente IA
                 conversationHistory = [];
+
+                // Le note sugli avversari descrivono i comportamenti di QUESTA
+                // asta (chi rilancia, chi molla, chi accumula) e alimentano il
+                // calcolo della pressione reale nell'agente: se restassero,
+                // la nuova asta partirebbe con letture prese da un'altra
+                // partita. Vanno azzerate qui, e non basta togliere la voce da
+                // localStorage: getNote() legge prima la cache window.
+                azzeraNoteAvversari();
+
+                // Anche lo storico degli annullamenti si riferisce ad acquisti
+                // che non esistono piu'.
+                undoStack = [];
 
                 // Nuova asta con lo stesso ordine: il turno riparte dal primo
                 turnoIndex = 0;
@@ -2112,9 +2148,36 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
                 filtered.sort((a, b) =>
                     rank(a) - rank(b) || (b.pma || 0) - (a.pma || 0));
             } else if (activeSortOrder === 'value') {
-                // Massima convenienza prima; a parità, il tier migliore
-                filtered.sort((a, b) =>
-                    (b.valueScore || 0) - (a.valueScore || 0) || rank(a) - rank(b));
+                /**
+                 * ORDINAMENTO PER CONVENIENZA.
+                 *
+                 * Prima qui c'era 'b.valueScore - a.valueScore'. Ma
+                 * valueScore e' il campo del listone gia' riconosciuto come
+                 * inaffidabile: compresso (il 57% dei giocatori sta fra 20 e
+                 * 40), saturo a 100 su 34 giocatori, e incoerente su casi
+                 * simili (Buongiorno 18 contro Carlos Augusto 95,5 a parita'
+                 * di prezzo e resa). E' esattamente il motivo per cui era
+                 * stata scritta AI_AGENT.convenienza(), che pero' era rimasta
+                 * usata solo dall'agente e non da questo bottone.
+                 *
+                 * Ora si ordina per punti attesi a stagione calcolati da
+                 * convenienza(): fantamedia storica temperata sul numero di
+                 * partite realmente giocate (una media su 5 gare non pesa
+                 * come una su 120) e moltiplicata per la titolarita' attesa.
+                 * A parita', il tier migliore.
+                 */
+                const cache = new Map();
+                const resa = (p) => {
+                    if (cache.has(p.id)) return cache.get(p.id);
+                    let v = 0;
+                    try {
+                        const c = AI_AGENT.convenienza(p, filtered);
+                        v = (c && c.puntiAttesi) || 0;
+                    } catch (e) { v = 0; }
+                    cache.set(p.id, v);
+                    return v;
+                };
+                filtered.sort((a, b) => resa(b) - resa(a) || rank(a) - rank(b));
             }
 
             const list = document.getElementById('playersList');

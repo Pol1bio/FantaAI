@@ -2824,6 +2824,7 @@
     note: note,
     azzeraNote: azzeraNote,
     patternDisponibili: patternDisponibili,
+    azzeraNote: azzeraNote,
     normRole: normRole,
     nameKey: nameKey,
     getPlayers: getPlayers

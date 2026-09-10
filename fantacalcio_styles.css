@@ -184,17 +184,21 @@ header h1 {
     margin-bottom: 8px;
 }
 
-.filter-item input {
-    padding: 8px;
-    background: #1e293b;
-    border: 1px solid #334155;
-    border-radius: 4px;
-    color: #e2e8f0;
-    font-size: 13px;
+/* Altezza unica per tutti i controlli della barra filtri.
+   Prima i campi di testo e il menu a tendina stavano sui 34px (padding 8 +
+   bordo 1) mentre i bottoni arrivavano a 38 (padding 10 + bordo 2): allineati
+   in alto, si vedeva lo scalino. 36px e' la via di mezzo esatta.
+   L'altezza e' fissata esplicitamente e con box-sizing: border-box, cosi'
+   resta la stessa nonostante i bordi di spessore diverso. */
+:root {
+    --filter-h: 36px;
 }
 
+.filter-item input,
 .filter-item select {
-    padding: 8px;
+    height: var(--filter-h);
+    box-sizing: border-box;
+    padding: 0 8px;
     background: #1e293b;
     border: 1px solid #334155;
     border-radius: 4px;
@@ -205,12 +209,21 @@ header h1 {
 .filter-buttons {
     display: flex;
     gap: 8px;
+    align-items: stretch;
 }
 
 .filter-btn,
 .sort-toggle {
     flex: 1;
-    padding: 10px;
+    height: var(--filter-h);
+    box-sizing: border-box;
+    /* flex per centrare il testo verticalmente ora che l'altezza e' fissa
+       e non piu' dettata dal padding */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 0 6px;
     background: #1e293b;
     border: 2px solid #334155;
     border-radius: 6px;
@@ -218,6 +231,8 @@ header h1 {
     cursor: pointer;
     font-size: 12px;
     font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
     transition: all 0.2s;
 }
 

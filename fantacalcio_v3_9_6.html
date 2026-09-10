@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asta Fantacalcio v3.9.9.24</title>
+    <title>Asta Fantacalcio v3.9.9.25</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=39925">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=39926">
 </head>
 <body>
     <div class="container">
         <header>
             <h1 id="appTitle">Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.24</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.25</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
                 <span id="astaProgress" style="font-size:11px;font-family:monospace;color:#cbd5e1;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.07);"></span>
             </div>
@@ -170,7 +170,12 @@
             <!-- COLONNA 4: La mia squadra (Sticky) -->
             <div class="col-my-squad">
                 <div class="my-squad-panel sticky">
-                    <h2><span id="myTeamName">Squadra 1</span></h2>
+                    <!-- P3 — ordine del pannello: prima il colpo d'occhio su
+                         tutta la lega, poi la propria squadra, poi le strategie. -->
+                    <h3 style="margin-top: 0;">Squadre della lega</h3>
+                    <div id="leagueDashboard" class="league-dashboard"></div>
+
+                    <h2 style="margin-top: 4px;"><span id="myTeamName">Squadra 1</span></h2>
 
                     <div class="squad-stats">
                         <div class="stat-box">
@@ -210,7 +215,9 @@
                         </div>
                     </div>
 
-                    <div style="margin-bottom: 15px; padding-bottom: 12px; border-bottom: 1px solid #334155;">
+                    <div id="strategicDashboard" style="background: #1e293b; padding: 12px; border-radius: 4px; border: 1px solid #334155; font-size: 11px; line-height: 1.6;"></div>
+
+                    <div style="margin-top: 15px; padding-top: 12px; border-top: 1px solid #334155; margin-bottom: 15px;">
                         <div style="font-size: 11px; color: #93c5fd; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Strategia:</div>
                         <div class="strategy-buttons-group strategy-group-my-squad">
                             <button class="strategy-btn active" data-strategy="bilanciata" onclick="switchStrategy('bilanciata')">BILANCIATA</button>
@@ -219,10 +226,7 @@
                             <button class="strategy-btn" data-strategy="centrocampo-first" onclick="switchStrategy('centrocampo-first')">CEN-FIRST</button>
                         </div>
                     </div>
-                    <div id="strategicDashboard" style="background: #1e293b; padding: 12px; border-radius: 4px; border: 1px solid #334155; font-size: 11px; line-height: 1.6;"></div>
 
-                    <h3 style="margin-top: 15px;">Squadre della lega</h3>
-                    <div id="leagueDashboard" class="league-dashboard"></div>
 
                     <button onclick="clearMySquad()" class="secondary" style="width: 100%;">Cancella Squadra</button>
                 </div>
@@ -283,10 +287,10 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=39925"></script>
-    <script src="storico_fantalissandria.js?v=39925"></script>
-    <script src="infortuni_serie_a.js?v=39925"></script>
-    <script src="fantacalcio_app.js?v=39925"></script>
-    <script src="fantacalcio_ai.js?v=39925"></script>
+    <script src="players_data.js?v=39926"></script>
+    <script src="storico_fantalissandria.js?v=39926"></script>
+    <script src="infortuni_serie_a.js?v=39926"></script>
+    <script src="fantacalcio_app.js?v=39926"></script>
+    <script src="fantacalcio_ai.js?v=39926"></script>
 </body>
 </html>
