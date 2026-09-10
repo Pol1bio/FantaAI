@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.33 - APP LOGIC
+        // FANTACALCIO v3.9.9.34 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -372,14 +372,6 @@
             
             document.getElementById('setupNamesSection').style.display = 'block';
             document.getElementById('setupSection').style.display = 'none';
-            const odReset = document.getElementById('orderDisplay');
-            if (odReset) {
-                // Svuotare e' cio' che conta: la classe 'active' non ha
-                // nessuna regola CSS dietro, toglierla non nascondeva nulla.
-                odReset.innerHTML = '';
-                odReset.classList.remove('active');
-                odReset.style.display = 'none';
-            }
             
             initTeamNamesSetup();
             updateDisplay();
@@ -442,8 +434,6 @@
             // Mostra il setup completato
             document.getElementById('setupNamesSection').style.display = 'none';
             document.getElementById('setupSection').style.display = 'none';
-            const od = document.getElementById('orderDisplay');
-            if (od) { od.style.display = 'block'; od.classList.add('active'); }
             const mine = document.getElementById('myTeamName');
             if (mine) mine.textContent = teams[1].name;
 
@@ -451,7 +441,6 @@
             renderTeamsOverview();
             updateDisplay();
             filterAvailable();
-            renderOrderDisplay();
             aggiornaTurnoChiamata();
 
             showMessage('✨ ' + nomi.join(', ') + ' — Pronto a giocare!', 'success');
@@ -556,7 +545,6 @@
             orderConfirmed = true;
             turnoIndex = 0;
             document.getElementById('setupSection').style.display = 'none';
-            document.getElementById('orderDisplay').style.display = 'none';
             initTeamButtons();
             renderTeamsOverview();
             loadData();
@@ -568,54 +556,9 @@
             turnoIndex = 0;
             orderConfirmed = false;
             document.getElementById('setupSection').style.display = 'block';
-            const odReset = document.getElementById('orderDisplay');
-            if (odReset) {
-                // Svuotare e' cio' che conta: la classe 'active' non ha
-                // nessuna regola CSS dietro, toglierla non nascondeva nulla.
-                odReset.innerHTML = '';
-                odReset.classList.remove('active');
-                odReset.style.display = 'none';
-            }
             initSetup();
         }
 
-        function renderOrderDisplay() {
-            const display = document.getElementById('orderDisplay');
-            if (!display) return;
-
-            // Senza un ordine non c'e' nulla da mostrare: meglio sparire che
-            // lasciare un riquadro vuoto o, peggio, i resti di un ordine
-            // precedente.
-            if (!teamOrder || !teamOrder.length) {
-                display.innerHTML = '';
-                display.classList.remove('active');
-                display.style.display = 'none';
-                return;
-            }
-
-            display.style.display = 'block';
-            display.classList.add('active');
-            // Le classi CSS reali sono '.order-buttons' (contenitore flex)
-            // e '.order-btn' (il singolo bottone): 'order-button' non
-            // corrispondeva a nessuna regola CSS, quindi la lista appariva
-            // senza stile, impilata verticalmente senza bottoni.
-            display.innerHTML = `<div class="order-buttons">` +
-                teamOrder.map((squad, idx) => `
-                    <div class="order-btn" id="orderBtn${idx}" onclick="highlightOrder(${idx})">
-                        ${idx + 1}. ${escapeHtml((teams[squad] && teams[squad].name) || ('Squadra ' + squad))}
-                    </div>
-                `).join('') + `</div>`;
-        }
-
-        function highlightOrder(index) {
-            // Evidenzia chi sta chiamando adesso: un click sposta il segno
-            // di spunta, cosi' si tiene traccia del turno durante l'asta.
-            document.querySelectorAll('#orderDisplay .order-btn').forEach((el) => {
-                el.classList.remove('active');
-            });
-            const btn = document.getElementById('orderBtn' + index);
-            if (btn) btn.classList.add('active');
-        }
 
         // TEAM BUTTONS
         function initTeamButtons() {
@@ -699,36 +642,12 @@
                         setupElement.style.display = 'none';
                     }
                     
-                    /**
-                     * ORDINE DI CHIAMATA — bug corretto.
-                     *
-                     * Qui il riquadro veniva soltanto RESO VISIBILE, senza
-                     * essere mai ridisegnato. Da cui i tre sintomi:
-                     *   - caricando un'asta su una pagina pulita, il riquadro
-                     *     compariva vuoto (non c'era nulla dentro da mostrare);
-                     *   - dopo aver generato squadre casuali e poi caricato
-                     *     un'asta vera, restavano a schermo i nomi casuali di
-                     *     prima, accanto alle squadre vere caricate altrove;
-                     *   - i bottoni sembravano "cliccabili a vuoto" perche'
-                     *     appartenevano a un ordine che non esisteva piu'.
-                     *
-                     * Ora il riquadro viene ricostruito dai dati appena
-                     * caricati, o nascosto e svuotato se il salvataggio non
-                     * contiene un ordine.
-                     */
-                    const odLoad = document.getElementById('orderDisplay');
+                    // L'ordine di chiamata non ha piu' un riquadro dedicato:
+                    // chi chiama adesso lo dice aggiornaTurnoChiamata() nel
+                    // pannello Registra Acquisto, aggiornandosi da solo.
                     if (teamOrder && teamOrder.length > 0) {
                         document.getElementById('setupSection').style.display = 'none';
-                        if (odLoad) {
-                            odLoad.style.display = 'block';
-                            odLoad.classList.add('active');
-                        }
                         orderConfirmed = true;
-                        renderOrderDisplay();
-                    } else if (odLoad) {
-                        odLoad.style.display = 'none';
-                        odLoad.classList.remove('active');
-                        odLoad.innerHTML = '';
                     }
                     
                     // Reinizializza i bottoni squadre
