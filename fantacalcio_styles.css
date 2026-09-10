@@ -129,6 +129,19 @@ header h1 {
     display: none;
 }
 
+/* Il riquadro ha bordo e 20px di padding: da vuoto restava a schermo come
+   un rettangolo bordato senza contenuto (succedeva caricando un'asta, che
+   lo rendeva visibile senza mai riempirlo). Il codice toglieva la classe
+   'active' credendo di nasconderlo, ma una regola .order-display.active
+   non e' mai esistita: quella classe non ha nessun effetto. La visibilita'
+   la decide il contenuto. */
+.order-display:empty {
+    display: none;
+    padding: 0;
+    margin: 0;
+    border: none;
+}
+
 .order-display h3 {
     font-size: 14px;
     color: #94a3b8;
