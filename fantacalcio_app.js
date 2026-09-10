@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.29 - APP LOGIC
+        // FANTACALCIO v3.9.9.31 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -345,6 +345,7 @@
             localStorage.removeItem('fantacalcio_config_completed');
             localStorage.removeItem('astaReports');
             azzeraNoteAvversari();
+            azzeraEsitoReport();
             undoStack = [];
             teamNamesConfirmed = false;
             orderConfirmed = false;
@@ -652,6 +653,9 @@
                         localStorage.setItem('fantacalcio_config_completed', 'true');
                     }
                     
+                    // La conferma a schermo si riferiva all'asta precedente
+                    azzeraEsitoReport();
+
                     // Salva in localStorage
                     saveData();
                     
@@ -1463,8 +1467,13 @@
                             </label>`;
                         });
                         corpo += '</div>';
-                        corpo += `<textarea class="note-text" rows="2" maxlength="200"
-                            placeholder="Cosa noti al tavolo..."
+                        // oninput salva a ogni carattere ma NON ridisegna (il
+                        // re-render rifa' l'HTML della griglia e farebbe
+                        // perdere il fuoco a meta' parola); onchange, che
+                        // scatta all'uscita dal campo, ridisegna una volta sola.
+                        corpo += `<textarea class="note-text" rows="3" maxlength="400"
+                            placeholder="Cosa noti al tavolo... (una nota per riga)"
+                            oninput="salvaNotaTesto(${i}, this.value, true)"
                             onchange="salvaNotaTesto(${i}, this.value)">${escapeHtml(testo)}</textarea>`;
                     }
 
@@ -1604,11 +1613,19 @@
             renderTeamsOverview();
         }
 
-        function salvaNotaTesto(teamNum, testo) {
+        /**
+         * Salva il testo libero di una nota.
+         *
+         * senzaRender=true durante la digitazione: il testo finisce subito in
+         * memoria (niente va perso se chiudi il pannello di colpo) ma la
+         * griglia non viene ridisegnata, altrimenti la textarea verrebbe
+         * ricreata a ogni tasto e perderesti il cursore.
+         */
+        function salvaNotaTesto(teamNum, testo, senzaRender) {
             if (typeof nota !== 'function') return;
             const corrente = (note(teamNum) || {}).pattern || [];
             nota(teamNum, corrente, (testo || '').trim() || null);
-            renderTeamsOverview();
+            if (!senzaRender) renderTeamsOverview();
         }
 
         window.toggleNotePanel = toggleNotePanel;
@@ -1779,6 +1796,26 @@
         window.toggleReportLive = toggleReportLive;
         window.toggleReportCard = toggleReportCard;
         /** Svuota i report senza toccare l'asta in corso. */
+        /** Mostra (sostituendola) la conferma dell'ultimo report salvato. */
+        function mostraEsitoReport(id) {
+            const c = document.getElementById('chatHistory');
+            if (!c) return;
+            c.innerHTML = `<div class="report-esito">✅ Report #${id} salvato</div>`;
+        }
+
+        /**
+         * Azzera la riga di conferma nel pannello Agente IA.
+         * Va chiamata ovunque l'asta cambi identita' — reset, caricamento di
+         * un altro salvataggio, cancellazione dei report — altrimenti resta a
+         * schermo la conferma di un report che non c'e' piu'.
+         */
+        function azzeraEsitoReport() {
+            const c = document.getElementById('chatHistory');
+            if (c) c.innerHTML = '';
+            conversationHistory = [];
+        }
+        window.azzeraEsitoReport = azzeraEsitoReport;
+
         function svuotaReport() {
             const n = getReports().length;
             if (!n) { showMessage('Non ci sono report da cancellare.', 'success'); return; }
@@ -1786,6 +1823,7 @@
             localStorage.removeItem('astaReports');
             const b = document.getElementById('reportLiveBody');
             if (b) b.innerHTML = '';
+            azzeraEsitoReport();
             aggiornaBadgeReport();
             if (reportLiveAperto) renderReportLiveBody();
             showMessage('Report cancellati.', 'success');
@@ -1830,6 +1868,7 @@
                 // partita. Vanno azzerate qui, e non basta togliere la voce da
                 // localStorage: getNote() legge prima la cache window.
                 azzeraNoteAvversari();
+                azzeraEsitoReport();
 
                 // Anche lo storico degli annullamenti si riferisce ad acquisti
                 // che non esistono piu'.
@@ -2406,8 +2445,13 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             
             // Salva in localStorage locale
             let reports = JSON.parse(localStorage.getItem('astaReports') || '[]');
+            // L'id NON e' reports.length: la lista e' tagliata agli ultimi 20,
+            // quindi dopo il ventesimo report la lunghezza resta ferma mentre
+            // la numerazione deve proseguire. Si riparte dall'id piu' alto visto.
+            const ultimoId = reports.reduce((m, r) => Math.max(m, r.id || 0), 0);
+            const nuovoId = ultimoId + 1;
             reports.push({
-                id: reports.length + 1,
+                id: nuovoId,
                 report,
                 timestamp,
                 receivedAt: new Date().toISOString()
@@ -2428,14 +2472,15 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             aggiornaBadgeReport();
             if (reportLiveAperto) renderReportLiveBody();
 
-            // Feedback all'utente
-            const c = document.getElementById('chatHistory');
-            c.innerHTML += `<div class="message assistant"><div class="content">
-                ✅ <strong>Report #${reports.length} salvato.</strong>
-                Lo trovi nel pannello <em>Report Live</em> a destra, sopra,
-                pronto da leggere.
-            </div></div>`;
-            c.scrollTop = c.scrollHeight;
+            // Feedback: una riga sola, sostituita ogni volta.
+            //
+            // Prima si usava innerHTML += , quindi le conferme si accumulavano
+            // per tutta l'asta e il riquadro cresceva senza fine — e non veniva
+            // svuotato da nessun reset, per cui dopo aver azzerato l'asta o
+            // caricato un altro salvataggio restavano elencati report che non
+            // esistevano piu'. Lo storico vero sta nel pannello Report Live
+            // qui accanto: qui basta sapere che l'ultimo e' stato salvato.
+            mostraEsitoReport(nuovoId);
 
             // Svuota il campo domanda
             document.getElementById('aiQuestion').value = '';

@@ -991,15 +991,18 @@ input:checked + .toggle-slider:before {
     letter-spacing: 1px;
 }
 
+/* Contiene ormai una riga sola (la conferma dell'ultimo report), quindi
+   non serve piu' il riquadro alto e imbottito da finestra di chat. Quando
+   e' vuoto sparisce del tutto invece di lasciare un rettangolo bordato:
+   e' lo stato in cui sta per gran parte dell'asta. */
 .chat-history {
-    background: #0f172a;
-    border: 1px solid #334155;
-    border-radius: 4px;
-    padding: 15px;
-    max-height: 200px;
-    overflow-y: auto;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     font-size: 12px;
+}
+
+.chat-history:empty {
+    display: none;
+    margin: 0;
 }
 
 .chat-message {
@@ -1554,4 +1557,17 @@ input:checked + .toggle-slider:before {
     font-size: 15px;
     padding-left: 0 !important;
     padding-right: 0 !important;
+}
+
+
+/* Conferma di salvataggio nel pannello Agente IA: una riga sola, compatta.
+   Lo storico completo dei report vive nel pannello Report Live. */
+.report-esito {
+    background: #14301f;
+    border: 1px solid #1d5236;
+    color: #86efac;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 10px;
+    border-radius: 4px;
 }
