@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.28 - APP LOGIC
+        // FANTACALCIO v3.9.9.29 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -1361,9 +1361,13 @@
                     // e' il numero che rende confrontabili due squadre a
                     // prescindere da quanto abbiano gia' speso in totale.
                     const speso = dentro.reduce((s, p) => s + p.price, 0);
-                    const quota = Math.round((speso / BUDGET_TOTAL) * 100);
+                    // Una cifra decimale con la virgola: sotto il 10% servono
+                    // i decimi per distinguere due reparti, sopra restano
+                    // leggibili lo stesso.
+                    const quota = ((speso / BUDGET_TOTAL) * 100).toFixed(1).replace('.', ',');
                     ruoliHtml += `<span class="ld-role${pieno ? ' full' : ''}${inFase ? ' now' : ''}">` +
-                                 `${role.charAt(0)}<b>${n}</b>/${lim}<em>${quota}%</em></span>`;
+                                 `${role.charAt(0)}<b>${n}</b>/${lim}` +
+                                 `<em>${speso}M</em><i>${quota}%</i></span>`;
                 });
 
                 html += `
@@ -1474,11 +1478,16 @@
                         </div>`;
                 }
 
-                // STRATEGIA RILEVATA (non sulla propria squadra): stessa
-                // deduzione gia' usata nel report, resa visibile qui invece
-                // di doverla andare a cercare nel testo.
+                // STRATEGIA RILEVATA — ora anche sulla propria squadra.
+                //
+                // Sugli avversari serve a capire cosa stanno facendo; su di se'
+                // serve a un controllo diverso ma altrettanto utile: la
+                // strategia che hai SCELTO coi bottoni e quella che stai
+                // davvero seguendo possono divergere, se l'andamento dell'asta
+                // ti ha costretto a virare. Il riquadro legge la spesa reale,
+                // non il bottone premuto, quindi lo scarto si vede.
                 let strategyHtml = '';
-                if (!isMyTeam && typeof AI_AGENT !== 'undefined' && AI_AGENT.inferOpponentStrategy) {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.inferOpponentStrategy) {
                     const inf = AI_AGENT.inferOpponentStrategy(team, i);
                     const muto = ['NESSUN ACQUISTO', 'TROPPO PRESTO PER DIRLO']
                         .includes(inf.strategy);
@@ -1506,8 +1515,18 @@
                               inf.eccessoSbilanciamento + ' punti oltre ogni strategia' : null
                     ].filter(Boolean).join(' · ');
 
-                    strategyHtml = `<div class="team-strategy${(muto || !inf.certa) ? ' weak' : ''}"
-                            title="${escapeHtml(tip)}">${testo}</div>`;
+                    // Sulla propria squadra si segnala anche se la rotta
+                    // reale si discosta da quella impostata coi bottoni.
+                    let divergenza = '';
+                    if (isMyTeam && !muto && inf.ipotesi) {
+                        const scelta = (STRATEGIES[currentStrategy] || {}).name;
+                        if (scelta && inf.ipotesi !== scelta && inf.confidence >= 25) {
+                            divergenza = ` <span class="ts-diverge" title="Hai impostato ${escapeHtml(scelta)}">≠</span>`;
+                        }
+                    }
+
+                    strategyHtml = `<div class="team-strategy${(muto || !inf.certa) ? ' weak' : ''}${isMyTeam ? ' mine' : ''}"
+                            title="${escapeHtml(tip)}">${testo}${divergenza}</div>`;
                 }
 
                 html += `

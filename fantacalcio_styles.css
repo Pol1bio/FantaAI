@@ -829,6 +829,25 @@ button.secondary:hover {
     font-weight: 500;
 }
 
+/* Sulla propria squadra il riquadro e' della stessa forma ma di un altro
+   colore, per non confonderlo con la lettura degli avversari. */
+.team-strategy.mine {
+    background: #1e3a2f;
+    color: #86efac;
+}
+
+.team-strategy.mine.weak {
+    background: #24302c;
+    color: #6b8f7d;
+}
+
+/* Segnala che la rotta reale si discosta dalla strategia impostata */
+.ts-diverge {
+    color: #fbbf24;
+    font-weight: 700;
+    cursor: help;
+}
+
 /* ==========================================
    STRATEGY BUTTONS
    ========================================== */
@@ -1359,9 +1378,9 @@ input:checked + .toggle-slider:before {
     background: #0f172a;
     border: 1px solid #1e293b;
     border-radius: 4px;
-    padding: 7px 8px;
-    font-size: 11px;
-    line-height: 1.4;
+    padding: 8px 9px;
+    font-size: 12px;
+    line-height: 1.45;
 }
 
 .ld-card.mine {
@@ -1376,8 +1395,8 @@ input:checked + .toggle-slider:before {
 .ld-name {
     font-weight: 700;
     color: #e2e8f0;
-    font-size: 12px;
-    margin-bottom: 4px;
+    font-size: 13px;
+    margin-bottom: 5px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1413,25 +1432,38 @@ input:checked + .toggle-slider:before {
     margin-bottom: 4px;
 }
 
+/* Tutto su UNA riga dentro la casella: i quattro ruoli restano su due
+   righe (griglia 2x2) ma ogni casella e' alta la meta', quindi la colonna
+   si accorcia parecchio e resta spazio per alzare i corpi. */
 .ld-role {
-    text-align: center;
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 3px;
+    white-space: nowrap;
     background: #1e293b;
     border-radius: 3px;
-    padding: 2px 0;
+    padding: 2px 3px;
     color: #94a3b8;
-    font-size: 11px;
+    font-size: 11.5px;
 }
 
 .ld-role b { color: #cbd5e1; font-weight: 700; }
 .ld-role em {
     font-style: normal;
-    display: block;
-    font-size: 9px;
-    color: #f59e0b;
-    opacity: 0.85;
-    line-height: 1.2;
+    font-size: 11px;
+    color: #e2e8f0;
 }
-.ld-role.full em { color: #fcd34d; }
+
+.ld-role i {
+    font-style: normal;
+    font-size: 10.5px;
+    color: #f59e0b;
+    opacity: 0.9;
+}
+
+.ld-role.full em { color: #f1f5f9; }
+.ld-role.full i { color: #fcd34d; }
 .ld-role.full { background: #14532d; color: #86efac; }
 .ld-role.full b { color: #bbf7d0; }
 .ld-role.now { outline: 1px solid #3b82f6; }
@@ -1511,4 +1543,15 @@ input:checked + .toggle-slider:before {
 .mysquad-body.aperto {
     max-height: 1200px;
     padding-top: 12px;
+}
+
+
+/* Annulla ultimo acquisto: stessa famiglia di "Pulisci", ma un grigio piu'
+   scuro — e' un'azione correttiva, non parte del flusso normale. */
+.btn-undo {
+    background: #1b2536 !important;
+    border-color: #334155 !important;
+    font-size: 15px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
