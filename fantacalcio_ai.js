@@ -2831,10 +2831,17 @@
       L.push('OSSERVAZIONI AL TAVOLO (annotate da me durante l\'asta)');
       (scN.squadreAffamate || []).forEach((a) => {
         if (!a.osservazioni.length && !a.nota) return;
-        const parti = [];
-        if (a.osservazioni.length) parti.push(a.osservazioni.join('; '));
-        if (a.nota) parti.push('"' + a.nota + '"');
-        L.push('- ' + a.squadra + ': ' + parti.join(' — '));
+        // Il testo libero puo' contenere piu' annotazioni, separate da un
+        // a capo o da un punto e virgola: si stampano una per riga invece
+        // che tutte dentro una virgoletta sola, altrimenti un a capo
+        // spezzerebbe la formattazione del report.
+        const righeNota = a.nota
+          ? String(a.nota).split(/[\n;]+/).map((x) => x.trim()).filter(Boolean)
+          : [];
+
+        L.push('- ' + a.squadra +
+               (a.osservazioni.length ? ': ' + a.osservazioni.join('; ') : ''));
+        righeNota.forEach((r) => L.push('    "' + r + '"'));
       });
       L.push('(pressione reale: ' + scN.squadreCompetitive +
              ' squadre rilanciano davvero su ' + scN.numeroSquadreAffamate +

@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.33';
+        const APP_VERSION = '3.9.9.34';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
