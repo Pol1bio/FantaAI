@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.32 - APP LOGIC
+        // FANTACALCIO v3.9.9.33 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -45,6 +45,13 @@
 
         // Filtro sui calciatori specialisti dei piazzati (campo setPieces)
         const activeSetPieces = new Set();
+
+        /**
+         * Versione di questo file. Confrontata con quella dichiarata
+         * nell'HTML: se non coincidono, il browser sta usando file di
+         * versioni diverse — quasi sempre per una cache non aggiornata.
+         */
+        const APP_VERSION = '3.9.9.33';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -2540,8 +2547,37 @@ La Squadra 1 è la squadra dell'utente. Dai consigli utili per vincere l'asta. S
             document.getElementById('aiQuestion').value = '';
         }
 
+        /**
+         * Avvisa se HTML e JavaScript arrivano da versioni diverse.
+         *
+         * Succede quando la cache del browser serve la pagina vecchia e i
+         * file nuovi (o il contrario): l'app sembra funzionare ma manca
+         * meta' delle correzioni, ed e' il tipo di cosa che ci si accorge
+         * in piena asta. Meglio un avviso esplicito con l'indicazione di
+         * cosa fare.
+         */
+        function verificaVersioni() {
+            const vHtml = (typeof window !== 'undefined' && window.HTML_VERSION) || null;
+            if (!vHtml || vHtml === APP_VERSION) return;
+
+            const avviso = document.createElement('div');
+            avviso.style.cssText =
+                'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+                'background:#7f1d1d;color:#fecaca;font-size:13px;font-weight:600;' +
+                'padding:10px 14px;text-align:center;cursor:pointer;';
+            avviso.innerHTML =
+                '&#9888;&#65039; Versioni disallineate: pagina ' + vHtml +
+                ', codice ' + APP_VERSION +
+                ' — ricarica tenendo premuto il tasto di ricarica, oppure apri in una finestra privata. ' +
+                '<span style="opacity:.8;font-weight:400;">(tocca per chiudere)</span>';
+            avviso.onclick = function () { avviso.remove(); };
+            document.body.appendChild(avviso);
+            console.warn('Versione HTML ' + vHtml + ' != versione app ' + APP_VERSION);
+        }
+
         // Carica dati e inizializza filtri al caricamento completo della pagina
         window.addEventListener('load', function() {
+            verificaVersioni();
             if (typeof PLAYERS_DATA !== 'undefined') {
                 initializeTeamFilter();
                 filterAvailable();
