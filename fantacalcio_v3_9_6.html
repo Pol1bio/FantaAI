@@ -15,9 +15,9 @@
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
 
-    <title>Asta Fantacalcio v3.9.9.41</title>
+    <title>Asta Fantacalcio v3.9.9.43</title>
     <link rel="icon" type="image/png" href="favicon.png">
-    <link rel="stylesheet" href="fantacalcio_styles.css?v=39942">
+    <link rel="stylesheet" href="fantacalcio_styles.css?v=39943">
 </head>
 <body>
     <script>
@@ -26,13 +26,13 @@
            mescolato file di versioni diverse (tipicamente HTML dalla cache e
            JS nuovo, o viceversa) e viene mostrato un avviso invece di far
            usare in asta una combinazione incoerente. */
-        window.HTML_VERSION = '3.9.9.41';
+        window.HTML_VERSION = '3.9.9.43';
     </script>
     <div class="container">
         <header>
             <h1 id="appTitle">Asta Fantacalcio</h1>
             <div style="display:flex;gap:12px;align-items:center;justify-content:center;margin-top:4px;">
-                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.41</span>
+                <span style="font-size:11px;opacity:0.6;font-family:monospace;">v3.9.9.43</span>
                 <span id="faseIndicator" style="font-size:12px;font-weight:700;letter-spacing:1px;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.15);">⏳ FASE: —</span>
                 <span id="astaProgress" style="font-size:11px;font-family:monospace;color:#cbd5e1;padding:2px 8px;border-radius:4px;background:rgba(255,255,255,0.07);"></span>
             </div>
@@ -180,9 +180,25 @@
                             <button onclick="resetRose()" class="secondary" style="background: #7c3aed; border-color: #6d28d9;">🔄 Reset Rose</button>
                             <input type="file" id="loadAstaInput" accept=".json" style="display: none;" onchange="loadAstaJSON(event)">
 
-                            <!-- Regola del turno di chiamata: cambia fra le due
-                                 leghe ed e' l'unica differenza di meccanica
-                                 d'asta fra Fantalissandria e la 1996. -->
+                            <!-- Selettore di lega: imposta in un colpo solo
+                                 rosa, budget, regola del turno e profili dei
+                                 manager. Cambiare lega azzera l'asta in corso. -->
+                            <div style="margin-top:12px;padding-top:10px;border-top:1px solid #334155;">
+                                <div style="font-size:11px;color:#93c5fd;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
+                                    Lega
+                                </div>
+                                <div class="filter-buttons">
+                                    <button class="filter-btn" id="btnLega_fantalissandria"
+                                            title="8 squadre, 500 crediti, rosa 3/8/8/6, modificatore difesa"
+                                            onclick="cambiaLega('fantalissandria')">FANTALISSANDRIA</button>
+                                    <button class="filter-btn" id="btnLega_lega1996"
+                                            title="8 squadre, 400 + residui, rosa 3/7/8/6, senza modificatore"
+                                            onclick="cambiaLega('lega1996')">1996</button>
+                                </div>
+                            </div>
+
+                            <!-- Regola del turno di chiamata: impostata dalla
+                                 lega, modificabile a mano se serve. -->
                             <div style="margin-top:12px;padding-top:10px;border-top:1px solid #334155;">
                                 <div style="font-size:11px;color:#93c5fd;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">
                                     Dopo un acquisto chiama
@@ -320,10 +336,11 @@
     </div>
 
     <!-- SCRIPT ESTERNI -->
-    <script src="players_data.js?v=39942"></script>
-    <script src="storico_fantalissandria.js?v=39942"></script>
-    <script src="infortuni_serie_a.js?v=39942"></script>
-    <script src="fantacalcio_app.js?v=39942"></script>
-    <script src="fantacalcio_ai.js?v=39942"></script>
+    <script src="players_data.js?v=39943"></script>
+    <script src="storico_fantalissandria.js?v=39943"></script>
+    <script src="storico_1996.js?v=39943"></script>
+    <script src="infortuni_serie_a.js?v=39943"></script>
+    <script src="fantacalcio_app.js?v=39943"></script>
+    <script src="fantacalcio_ai.js?v=39943"></script>
 </body>
 </html>

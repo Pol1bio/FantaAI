@@ -1,11 +1,155 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.41 - APP LOGIC
+        // FANTACALCIO v3.9.9.43 - APP LOGIC
         // ==========================================
 
         // COSTANTI
-        const BUDGET_TOTAL = 500;
-        const PLAYERS_PER_SQUAD = 25;
-        const ROLE_LIMITS = { POR: 3, DIF: 8, CEN: 8, ATT: 6 };
+        let BUDGET_TOTAL = 500;
+        /* ==========================================================
+         * CONFIGURAZIONE DI LEGA
+         *
+         * L'app serve due leghe con regole diverse. Tutto cio' che cambia
+         * sta qui; il resto del codice legge queste variabili e non sa da
+         * quale lega venga.
+         *
+         * Differenze fra le due:
+         *   - rosa: 25 giocatori (3/8/8/6) contro 24 (3/7/8/6)
+         *   - budget: 500 uguali per tutti contro 400 piu' il residuo
+         *     dell'anno prima, diverso per squadra
+         *   - turno di chiamata: ordine fisso contro "dopo chi compra"
+         *   - modificatore difesa: attivo contro assente
+         * ========================================================== */
+        const LEGHE = {
+            fantalissandria: {
+                nome: 'Fantalissandria',
+                titolo: 'ASTA FANTALISSANDRIA',
+                playersPerSquad: 25,
+                roleLimits: { POR: 3, DIF: 8, CEN: 8, ATT: 6 },
+                budgetBase: 500,
+                budgetPerSquadra: null,      // uguale per tutte
+                regolaTurno: 'chiamante',
+                modificatoreDifesa: true,
+                storico: 'STORICO_MANAGER'
+            },
+            lega1996: {
+                nome: 'Lega Fantacalcio 1996',
+                titolo: 'ASTA LEGA FANTACALCIO 1996',
+                playersPerSquad: 24,
+                roleLimits: { POR: 3, DIF: 7, CEN: 8, ATT: 6 },
+                budgetBase: 400,
+                // 400 piu' il residuo della stagione precedente
+                budgetPerSquadra: {
+                    'MARCHINHOS': 418, 'BOCA MOMIX': 405, 'ATLETICO JACK': 405,
+                    'DINAMO BOSH': 443, 'REAL PIX': 400, 'MOTTENTUS': 412,
+                    'SPARTA BRAGA': 401, 'FANTAMACHO': 406
+                },
+                regolaTurno: 'acquirente',
+                modificatoreDifesa: false,
+                storico: 'STORICO_MANAGER_1996'
+            }
+        };
+
+        let legaCorrente = 'fantalissandria';
+        try {
+            const lg = localStorage.getItem('legaCorrente');
+            if (lg && LEGHE[lg]) legaCorrente = lg;
+        } catch (e) { /* predefinito */ }
+
+        function lega() { return LEGHE[legaCorrente]; }
+
+        /** Il modulo storico della lega scelta, se caricato. */
+        function storicoLega() {
+            const nome = lega().storico;
+            if (typeof window !== 'undefined' && window[nome]) return window[nome];
+            return null;
+        }
+
+        /**
+         * Applica la configurazione della lega scelta.
+         *
+         * Non tocca le rose: chiamata con azzera=false serve a riallineare
+         * le costanti al caricamento della pagina. Con azzera=true azzera
+         * tutto, perche' passare da una lega all'altra significa iniziare
+         * un'asta diversa, con rosa e budget diversi.
+         */
+        function applicaLega(chiave, azzera) {
+            if (!LEGHE[chiave]) return;
+            legaCorrente = chiave;
+            try { localStorage.setItem('legaCorrente', chiave); } catch (e) {}
+
+            const L = lega();
+            PLAYERS_PER_SQUAD = L.playersPerSquad;
+            ROLE_LIMITS = Object.assign({}, L.roleLimits);
+            BUDGET_TOTAL = L.budgetBase;
+            regolaTurno = L.regolaTurno;
+            try { localStorage.setItem('regolaTurno', regolaTurno); } catch (e) {}
+
+            const titolo = document.getElementById('appTitle');
+            if (titolo) titolo.textContent = L.titolo;
+
+            const btn = document.getElementById('btnManagerReali');
+            const st = storicoLega();
+            if (btn) btn.style.display = (st && st.partecipanti202627) ? 'block' : 'none';
+
+            if (azzera) {
+                teams = {};
+                initializeTeams();
+                applicaBudgetDiLega();
+                teamOrder = [];
+                orderConfirmed = false;
+                teamNamesConfirmed = false;
+                undoStack = [];
+                try {
+                    localStorage.removeItem('fantacalcio_config_completed');
+                    localStorage.removeItem('astaReports');
+                    localStorage.removeItem('giocatoriManuali');
+                } catch (e) {}
+                azzeraNoteAvversari();
+                azzeraEsitoReport();
+                saveData();
+            }
+
+            aggiornaBottoniRegolaTurno();
+            aggiornaBottoniLega();
+        }
+        window.applicaLega = applicaLega;
+
+        /** Assegna a ogni squadra il proprio budget di partenza, se la lega ne prevede di diversi. */
+        function applicaBudgetDiLega() {
+            const perSquadra = lega().budgetPerSquadra;
+            for (let i = 1; i <= 8; i++) {
+                if (!teams[i]) continue;
+                let b = lega().budgetBase;
+                if (perSquadra) {
+                    const trovato = perSquadra[String(teams[i].name).toUpperCase()];
+                    if (typeof trovato === 'number') b = trovato;
+                }
+                const speso = teams[i].spent || 0;
+                teams[i].budgetIniziale = b;
+                teams[i].budget = b - speso;
+            }
+        }
+        window.applicaBudgetDiLega = applicaBudgetDiLega;
+
+        function cambiaLega(chiave) {
+            if (!LEGHE[chiave] || chiave === legaCorrente) return;
+            if (!confirm('Passare a ' + LEGHE[chiave].nome +
+                         '? Rose, ordine e report della lega attuale verranno azzerati.')) return;
+            applicaLega(chiave, true);
+            location.reload();
+        }
+        window.cambiaLega = cambiaLega;
+
+        function aggiornaBottoniLega() {
+            Object.keys(LEGHE).forEach(k => {
+                const b = document.getElementById('btnLega_' + k);
+                if (b) b.classList.toggle('active', k === legaCorrente);
+            });
+        }
+
+        // Non piu' costanti: dipendono dalla lega scelta. Restano con gli
+        // stessi nomi perche' sono lette in una trentina di punti.
+        let PLAYERS_PER_SQUAD = lega().playersPerSquad;
+        let ROLE_LIMITS = Object.assign({}, lega().roleLimits);
 
         // Liste per generazione nomi casuali (generaSquadreRandom)
         const PAROLE_NOMI = [
@@ -51,7 +195,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.41';
+        const APP_VERSION = '3.9.9.43';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -551,12 +695,12 @@
         }
 
         function caricaManagerReali() {
-            if (typeof STORICO_MANAGER === 'undefined' ||
-                !STORICO_MANAGER.partecipanti202627) {
-                showMessage('Nessun elenco manager disponibile in questo modulo storico.', 'error');
+            const st = storicoLega();
+            if (!st || !st.partecipanti202627) {
+                showMessage('Nessun elenco manager disponibile per ' + lega().nome + '.', 'error');
                 return;
             }
-            const nomi = STORICO_MANAGER.partecipanti202627;
+            const nomi = st.partecipanti202627;
             if (!confirm('Impostare le 8 squadre con i nomi reali (' + nomi.join(', ') +
                          ")? L'ordine di chiamata lo scegli tu nella schermata successiva.")) {
                 return;
@@ -564,8 +708,12 @@
 
             // 'IO' e' sempre la squadra di Polibio: va in prima posizione,
             // dove myTeamNum punta di default.
+            // La squadra di Polibio va in prima posizione, dove punta
+            // myTeamNum: si chiama 'IO' a Fantalissandria e 'MARCHINHOS'
+            // nella Lega Fantacalcio 1996.
             const ordinati = nomi.slice();
-            const idxIo = ordinati.findIndex((n) => n.toUpperCase() === 'IO');
+            const idxIo = ordinati.findIndex(
+                (n) => ['IO', 'MARCHINHOS'].includes(String(n).toUpperCase()));
             if (idxIo > 0) {
                 const io = ordinati.splice(idxIo, 1)[0];
                 ordinati.unshift(io);
@@ -575,6 +723,9 @@
             // nomi, poi passa alla schermata di scelta ordine (initSetup),
             // senza toccare teamOrder ne' orderConfirmed.
             initializeTeams(ordinati);
+            // Con i nomi noti si possono assegnare i budget di partenza
+            // previsti dalla lega (nella 1996 sono diversi per squadra).
+            applicaBudgetDiLega();
             teamNamesConfirmed = true;
             // classList.add('hidden') da solo non bastava: una regola .hidden
             // generica non e' mai esistita nel CSS (c'era solo
@@ -2684,11 +2835,8 @@
              * senza nessun modulo storico (o con quello di un'altra lega,
              * es. Lega1996 in futuro) resta il nome generico.
              */
-            const titolo = document.getElementById('appTitle');
-            if (titolo && typeof STORICO_MANAGER !== 'undefined' &&
-                STORICO_MANAGER.lega === 'Fantalissandria') {
-                titolo.textContent = 'Asta Fantalisandria';
-                const btn = document.getElementById('btnManagerReali');
-                if (btn && STORICO_MANAGER.partecipanti202627) btn.style.display = 'block';
-            }
+            // Titolo, costanti di rosa, budget e regola del turno vengono
+            // tutti dalla configurazione della lega scelta (azzera=false:
+            // qui si riallinea soltanto, senza toccare l'asta in corso).
+            applicaLega(legaCorrente, false);
         });

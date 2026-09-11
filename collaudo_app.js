@@ -130,6 +130,10 @@ function esigi(condizione, titolo, dettaglio) {
 // l'app, che non sono proprieta' dell'oggetto globale.
 const dentro = (codice) => vm.runInContext(codice, ctx);
 
+// La lega da collaudare: cambia rosa, budget e regola del turno insieme.
+const LEGA = process.argv[4] || null;
+if (LEGA) dentro(`applicaLega(${JSON.stringify(LEGA)}, false);`);
+
 const LIMITI = dentro('ROLE_LIMITS');
 const REPARTI = dentro('ROLE_ORDER');
 const BUDGET = dentro('BUDGET_TOTAL');
@@ -231,7 +235,8 @@ function liberi(ruolo) {
 
 dentro(`regolaTurno = ${JSON.stringify(REGOLA)};`);
 
-console.log('COLLAUDO STRATO APP — seme ' + SEME + ', regola turno: ' + REGOLA);
+console.log('COLLAUDO STRATO APP — seme ' + SEME + ', regola turno: ' + REGOLA +
+  (LEGA ? ', lega: ' + LEGA : '') + ', rosa da ' + PER_ROSA);
 console.log('Ordine di chiamata: ' + JSON.stringify(dentro('teamOrder')) + '\n');
 
 verificaInvarianti('stato iniziale');
@@ -419,7 +424,7 @@ console.log('Budget iniziali usati: ' + [1,2,3,4,5,6,7,8].map(i => fine.teams[i]
 console.log('Speso + residuo:       ' + [1,2,3,4,5,6,7,8].map(i => fine.teams[i].spent + '+' + fine.teams[i].budget).join(', '));
 console.log(`Acquisti registrati: ${acquisti}`);
 console.log(`Giocatori inseriti a mano durante l'asta: ${manuali}`);
-console.log(`Rose complete (25/25): ${completi}/8`);
+console.log(`Rose complete (${PER_ROSA}/${PER_ROSA}): ${completi}/8`);
 console.log(`Invarianti controllate a ogni passo: 7`);
 console.log(`Chiamanti ripetuti senza motivo: ${ripetizioniIngiustificate}`);
 console.log('');
