@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.38 - APP LOGIC
+        // FANTACALCIO v3.9.9.39 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.38';
+        const APP_VERSION = '3.9.9.39';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -359,6 +359,7 @@
             localStorage.removeItem('fantacalcio_v3_1');
             localStorage.removeItem('fantacalcio_config_completed');
             localStorage.removeItem('astaReports');
+            localStorage.removeItem('giocatoriManuali');
             azzeraNoteAvversari();
             azzeraEsitoReport();
             undoStack = [];
@@ -2158,6 +2159,101 @@
             return false;
         }
 
+        /* ==========================================================
+         * GIOCATORI INSERITI A MANO
+         *
+         * Il listone e' una lista chiusa: se un nome chiamato all'asta non
+         * c'e', l'acquisto non si puo' registrare. Qui si puo' aggiungerlo.
+         *
+         * SCELTA DI FONDO: il giocatore non resta un fantasma presente solo
+         * nelle rose, viene inserito in PLAYERS_DATA in memoria. Tutto il
+         * codice — panoramica, schede, report, agente — fa decine di
+         * PLAYERS_DATA.find(x => x.id === ...) dando per scontato che
+         * trovino qualcosa; un giocatore assente dal listone farebbe
+         * restituire undefined a tutte, con tier vuoti e campi mancanti
+         * sparsi ovunque. Inserendolo, nessun presupposto si rompe.
+         *
+         * Il file su disco non viene toccato: i giocatori aggiunti vivono in
+         * localStorage e vengono reinseriti a ogni caricamento.
+         *
+         * Sono marcati con inseritoManualmente: true, cosi' l'agente puo'
+         * escluderli dalle statistiche in modo esplicito invece di doverlo
+         * dedurre dai campi vuoti. Prezzi e fantamedie restano null e NON
+         * zero: uno zero li farebbe risultare i peggiori della lega e
+         * sposterebbe le medie di tutti.
+         * ========================================================== */
+
+        // Gli id del listone vanno da 1 a 531: partendo da 900000 la
+        // collisione e' impossibile anche con listoni molto piu' grandi.
+        const ID_MANUALE_BASE = 900000;
+
+        function giocatoriManualiSalvati() {
+            try { return JSON.parse(localStorage.getItem('giocatoriManuali') || '[]'); }
+            catch (e) { return []; }
+        }
+
+        /** Reinserisce nel listone in memoria i giocatori aggiunti a mano. */
+        function ripristinaGiocatoriManuali() {
+            if (typeof PLAYERS_DATA === 'undefined') return;
+            giocatoriManualiSalvati().forEach(g => {
+                if (!PLAYERS_DATA.some(p => p.id === g.id)) PLAYERS_DATA.push(g);
+            });
+        }
+
+        function aggiungiGiocatoreManuale() {
+            const fase = calcolaFaseCorrente();
+            if (!fase) {
+                showMessage('L\'asta è conclusa: non serve aggiungere giocatori.', 'error');
+                return;
+            }
+
+            // Il ruolo NON viene chiesto: l'asta procede per reparti in
+            // sequenza, quindi in questa fase puo' essere chiamato solo un
+            // giocatore di questo ruolo. Chiederlo aggiungerebbe soltanto
+            // un modo di sbagliare.
+            const nome = (prompt('Nome del ' + fase + ' da aggiungere:') || '').trim();
+            if (!nome) return;
+
+            const gia = PLAYERS_DATA.find(
+                p => String(p.name).toUpperCase() === nome.toUpperCase());
+            if (gia) {
+                showMessage(gia.name + ' è già nel listone (' + gia.role + ', ' + gia.team + ').', 'error');
+                return;
+            }
+
+            const squadra = (prompt('Squadra di Serie A di ' + nome + ':') || '').trim();
+            if (!squadra) return;
+
+            const salvati = giocatoriManualiSalvati();
+            const nuovo = {
+                id: ID_MANUALE_BASE + salvati.length + 1,
+                name: nome.toUpperCase(),
+                team: squadra,
+                role: fase,
+                inseritoManualmente: true,
+                // Espliciti a null: assenza di dato, non valore zero.
+                pma: null, pfc: null, maxPriceLega: null,
+                tierConsensus: null, qualityScore: null, valueScore: null,
+                fmStorica: null, mvStorica: null, pvMedia: null, seasonsUsed: 0,
+                expectedTitolarita: null, setPieces: [],
+                penaltyProbability: 0, freeKickProbability: 0,
+                risks: ['inserito a mano durante l\'asta: nessun dato storico'],
+                sources: []
+            };
+
+            salvati.push(nuovo);
+            try { localStorage.setItem('giocatoriManuali', JSON.stringify(salvati)); }
+            catch (e) { /* resta comunque in memoria per questa sessione */ }
+            PLAYERS_DATA.push(nuovo);
+
+            filterAvailable();
+            setupAutocomplete();
+            selectPlayer(nuovo.id, nuovo.name, nuovo.role, nuovo.team);
+            showMessage(nuovo.name + ' aggiunto come ' + fase + ' (' + squadra +
+                        '). Nessun dato storico: valutalo tu.', 'success');
+        }
+        window.aggiungiGiocatoreManuale = aggiungiGiocatoreManuale;
+
         // GIOCATORI DISPONIBILI
         function initializeTeamFilter() {
             const teamSelect = document.getElementById('filterTeam');
@@ -2255,7 +2351,25 @@
 
             const list = document.getElementById('playersList');
             if (filtered.length === 0) {
-                list.innerHTML = '<div style="padding: 20px; text-align: center; color: #64748b;">Nessun giocatore disponibile</div>';
+                // Il bottone per inserire un giocatore a mano compare SOLO
+                // qui: se la ricerca non trova nulla ed e' in corso una fase
+                // d'asta. Non e' una scorciatoia sempre disponibile, e' la
+                // via d'uscita per il caso raro del nome assente dal listone.
+                const faseOra = calcolaFaseCorrente();
+                const cercato = (document.getElementById('searchAvailable') || {}).value || '';
+                list.innerHTML =
+                    '<div style="padding: 18px; text-align: center; color: #64748b;">' +
+                    'Nessun giocatore disponibile' +
+                    (faseOra ? (
+                        '<div style="margin-top:14px;font-size:12px;color:#94a3b8;line-height:1.5;">' +
+                        'Se il nome chiamato non è nel listone, puoi aggiungerlo:' +
+                        '</div>' +
+                        '<button onclick="aggiungiGiocatoreManuale()" class="secondary" ' +
+                        'style="margin-top:10px;background:#1e3a5f;border-color:#2c5282;">' +
+                        '➕ Aggiungi ' + faseOra + ' non in lista</button>'
+                    ) : '') +
+                    '</div>';
+                void cercato;
                 return;
             }
 
@@ -2474,6 +2588,7 @@
         // Carica dati e inizializza filtri al caricamento completo della pagina
         window.addEventListener('load', function() {
             verificaVersioni();
+            ripristinaGiocatoriManuali();
             if (typeof PLAYERS_DATA !== 'undefined') {
                 initializeTeamFilter();
                 filterAvailable();

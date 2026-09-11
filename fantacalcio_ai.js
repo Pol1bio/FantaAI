@@ -803,7 +803,18 @@
       const perCredito = punti / Math.max(1, player.pma || 1);
 
       const role = normRole(player.role);
-      const pari = (availables || []).filter((p) => normRole(p.role) === role);
+      /**
+       * I giocatori inseriti a mano durante l'asta restano fuori dal
+       * gruppo di confronto: non hanno storico, quindi la loro resa stimata
+       * e' 0 e comparirebbero come i peggiori del reparto pur non essendo
+       * stati valutati affatto. Tenendoli dentro sposterebbero di una
+       * posizione le classifiche di tutti gli altri e il totale mostrato
+       * ("5o su 189" invece di 188) senza aggiungere informazione.
+       * Il giocatore su cui si sta calcolando resta valutato comunque:
+       * l'esclusione riguarda il metro di paragone, non il soggetto.
+       */
+      const pari = (availables || []).filter(
+        (p) => normRole(p.role) === role && !p.inseritoManualmente);
       const posPunti = pari.filter((p) => stima(p) > punti).length + 1;
       const posEff = pari.filter((p) =>
         stima(p) / Math.max(1, p.pma || 1) > perCredito).length + 1;
