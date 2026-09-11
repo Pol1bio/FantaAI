@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.37 - APP LOGIC
+        // FANTACALCIO v3.9.9.38 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.37';
+        const APP_VERSION = '3.9.9.38';
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -154,36 +154,40 @@
         // ==========================================
         // STRATEGIE DI BUDGET
         // ==========================================
-        const STRATEGIES = {
-            conservativa: {
-                name: 'CONSERVATIVA',
-                POR: 0.07,
-                DIF: 0.19,
-                CEN: 0.32,
-                ATT: 0.42
-            },
-            bilanciata: {
-                name: 'BILANCIATA',
-                POR: 0.09,
-                DIF: 0.17,
-                CEN: 0.27,
-                ATT: 0.47
-            },
-            aggressiva: {
-                name: 'AGGRESSIVA',
-                POR: 0.06,
-                DIF: 0.14,
-                CEN: 0.24,
-                ATT: 0.56
-            },
-            'centrocampo-first': {
-                name: 'CENTROCAMPO-FIRST',
-                POR: 0.06,
-                DIF: 0.18,
-                CEN: 0.38,
-                ATT: 0.38
-            }
+        /**
+         * RIPARTIZIONE DEL BUDGET PER REPARTO — fonte unica: l'agente.
+         *
+         * Qui c'era una tabella propria dell'app, rimasta alla taratura
+         * precedente e divergente da quella dell'agente di 45-50 crediti
+         * sull'attacco (BILANCIATA: app 235, agente 280). Le due vivevano
+         * nello stesso riquadro a schermo dicendo cose diverse: il
+         * "Budget di fase" contava su una ripartizione, il "Prossimo
+         * target" una riga sotto su un'altra, e i consigli segnalavano
+         * sforamenti su spese che il dashboard aveva appena autorizzato.
+         *
+         * La tabella dell'agente e' quella giusta per due conferme
+         * indipendenti: la revisione fatta verificando fmStorica contro
+         * mvStorica (un portiere o un difensore economico ha voto simile
+         * a uno costoso, ma non rendimento simile), e la tabella Laudantes
+         * "FANTA A 8 CON MODIFICATORE" — POR 27-35, DIF 70-75, CEN max 120,
+         * ~300 per gli attaccanti. Scostamento dal centro di quelle bande:
+         * 17 crediti per l'agente, 83 per la vecchia tabella dell'app.
+         *
+         * Ora l'app legge da AI_AGENT.strategies. La copia locale resta
+         * solo come rete di sicurezza se l'agente non fosse caricato.
+         */
+        const STRATEGIE_FALLBACK = {
+            conservativa:        { name: 'CONSERVATIVA',      POR: 0.06, DIF: 0.15, CEN: 0.27, ATT: 0.52 },
+            bilanciata:          { name: 'BILANCIATA',        POR: 0.06, DIF: 0.13, CEN: 0.25, ATT: 0.56 },
+            aggressiva:          { name: 'AGGRESSIVA',        POR: 0.04, DIF: 0.10, CEN: 0.20, ATT: 0.66 },
+            'centrocampo-first': { name: 'CENTROCAMPO-FIRST', POR: 0.06, DIF: 0.12, CEN: 0.35, ATT: 0.47 }
         };
+
+        /** Le strategie in uso: quelle dell'agente se disponibile. */
+        function strategie() {
+            if (typeof AI_AGENT !== 'undefined' && AI_AGENT.strategies) return AI_AGENT.strategies;
+            return STRATEGIE_FALLBACK;
+        }
 
         var currentStrategy = 'bilanciata'; // default
 
@@ -240,7 +244,7 @@
 
         function calculateSmartBudget(teamNum) {
             const team = teams[teamNum];
-            const strategy = STRATEGIES[currentStrategy];
+            const strategy = strategie()[currentStrategy];
             
             // Ruoli mancanti
             const missingRoles = {};
@@ -1190,7 +1194,7 @@
                 let dashboardHtml = '';
                 
                 // Estratto della strategia attiva
-                const strategy = STRATEGIES[currentStrategy];
+                const strategy = strategie()[currentStrategy];
                 dashboardHtml += `<div style="font-size: 10px; color: #60a5fa; margin-bottom: 8px; font-weight: 600;">STRATEGIA: ${strategy.name}</div>`;
                 
                 // Per ogni ruolo
@@ -1555,7 +1559,7 @@
                     // reale si discosta da quella impostata coi bottoni.
                     let divergenza = '';
                     if (isMyTeam && !muto && inf.ipotesi) {
-                        const scelta = (STRATEGIES[currentStrategy] || {}).name;
+                        const scelta = (strategie()[currentStrategy] || {}).name;
                         if (scelta && inf.ipotesi !== scelta && inf.confidence >= 25) {
                             divergenza = ` <span class="ts-diverge" title="Hai impostato ${escapeHtml(scelta)}">≠</span>`;
                         }

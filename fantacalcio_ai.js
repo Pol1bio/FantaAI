@@ -2038,20 +2038,41 @@
      * economico (C) — altrimenti scende subito, per non promettere un
      * top e poi restare senza soldi per completare il reparto.
      *
-     * BASELINE_PREZZO_TIER viene dal prezzo mediano REALE (pma) di
-     * questo listone per ruolo+tierConsensus (tutti i 531 giocatori,
-     * soglia minima 3 osservazioni per cella). Incrociato con le fasce
-     * di prezzo di Laudantes (tierBudgetPct, dove esiste: solo DIF e
-     * CEN) per verifica: coincidono bene (es. DIF A+ noi 5.4% del
-     * budget, Laudantes dice 3-9%; CEN A+ noi 9.2%, Laudantes 6-13%).
-     * Laudantes non copre POR e ATT: per quei ruoli la baseline e'
-     * solo quella calcolata qui.
+     * BASELINE_PREZZO_TIER e' la MEDIA di tre fonti indipendenti, per
+     * ogni ruolo+tierConsensus (soglia minima 3 osservazioni per cella):
+     *
+     *   1. mediana di `pma`  — listino Fantacalcio.it
+     *   2. mediana di `pfc`  — listino Fantaculo
+     *   3. prezzi per slot dichiarati da Laudantes nella tabella
+     *      "FANTA A 8 CON MODIFICATORE", che e' esattamente questo
+     *      formato di lega: POR 25 per lo slot del modificatore;
+     *      DIF A+ 30, A 15, A- 9, B 4-5. Per CEN e ATT Laudantes da'
+     *      solo il totale di reparto (max 120 / ~300), non prezzi per
+     *      slot: li' la media e' fra le prime due fonti soltanto.
+     *
+     * Prima si usava il solo `pma`. Fantaculo cambia poco (le due fonti
+     * correlano 0.995) ma vale come controprova; Laudantes invece alza
+     * sensibilmente le fasce basse in difesa — A- da 4.8 a 6.1, B da 1.2
+     * a 2.1 — perche' non descrive il prezzo di mercato ma quanto CONVIENE
+     * spendere in una lega col modificatore, dove un difensore solido
+     * rende piu' del suo prezzo di listino.
+     *
+     * Due vincoli applicati dopo la media:
+     *   - pavimento a 1: in asta non si offre meno di 1 credito, e una
+     *     mediana Fantaculo di 0.5 sulle fasce basse non e' un'offerta;
+     *   - monotonia: scendendo di fascia il prezzo non risale mai. Senza,
+     *     in difesa risultava A-- 1 e B 2.1, e assegnaFasce() — che scorre
+     *     le fasce dall'alto e prende la prima che sta nel budget — si
+     *     sarebbe comportata in modo incoerente.
+     *
+     * Controprova sui reparti tipo: DIF 1xA+ 1xA 3xA- 3xB = 65 crediti
+     * (Laudantes 70-75), POR 1xA+ 2xC = 33 (Laudantes 27-35).
      */
     BASELINE_PREZZO_TIER = {
-      POR: { 'A+': 32, A: 2.2, 'A-': 1.3, B: 0.8, C: 0.9 },
-      DIF: { 'A+': 27, A: 12.6, 'A-': 4.8, 'A--': 1.4, B: 1.2, C: 1 },
-      CEN: { 'A+': 46, A: 25.4, 'A-': 8.4, 'A--': 2.7, B: 1.2, C: 1 },
-      ATT: { 'A+': 130.5, A: 61.3, 'A-': 22.5, 'A--': 7.4, B: 1.2, C: 1.1 }
+      POR: { 'A+': 31.4, A: 1.8, 'A-': 1.3, B: 1, C: 1 },
+      DIF: { 'A+': 26.8, A: 14, 'A-': 6.1, 'A--': 2.1, B: 2.1, C: 1 },
+      CEN: { 'A+': 44.4, A: 27.4, 'A-': 8.2, 'A--': 1.6, B: 1, C: 1 },
+      ATT: { 'A+': 136.1, A: 65.2, 'A-': 23.4, 'A--': 6.8, B: 1, C: 1 }
     };
 
     /**
