@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.40 - APP LOGIC
+        // FANTACALCIO v3.9.9.41 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,48 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.40';
+        const APP_VERSION = '3.9.9.41';
+
+        /**
+         * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
+         *
+         *   'chiamante' (Fantalissandria): l'ordine e' prestabilito e fisso.
+         *       Il turno avanza di una posizione rispetto a CHI HA CHIAMATO;
+         *       chi si aggiudica il giocatore non conta.
+         *
+         *   'acquirente' (Lega Fantacalcio 1996): il turno avanza di una
+         *       posizione rispetto a CHI HA COMPRATO. Chiama il fantallenatore
+         *       che, nell'ordine estratto, viene subito dopo chi si e' appena
+         *       aggiudicato il giocatore.
+         *
+         * Conseguenza tattica della seconda, che vale la pena ricordare:
+         * aggiudicarsi un giocatore costa anche la chiamata, che passa al
+         * proprio vicino d'ordine. Chi compra molto la regala sempre allo
+         * stesso. E lo stesso fantallenatore puo' chiamare due volte di
+         * fila in modo del tutto legittimo — se chiama A e compra la squadra
+         * che precede A nell'ordine, tocca di nuovo ad A.
+         */
+        let regolaTurno = 'chiamante';
+        try {
+            const rt = localStorage.getItem('regolaTurno');
+            if (rt === 'chiamante' || rt === 'acquirente') regolaTurno = rt;
+        } catch (e) { /* predefinito */ }
+
+        function impostaRegolaTurno(regola) {
+            if (regola !== 'chiamante' && regola !== 'acquirente') return;
+            regolaTurno = regola;
+            try { localStorage.setItem('regolaTurno', regola); } catch (e) {}
+            aggiornaBottoniRegolaTurno();
+            aggiornaTurnoChiamata();
+        }
+
+        function aggiornaBottoniRegolaTurno() {
+            const a = document.getElementById('btnTurnoChiamante');
+            const b = document.getElementById('btnTurnoAcquirente');
+            if (a) a.classList.toggle('active', regolaTurno === 'chiamante');
+            if (b) b.classList.toggle('active', regolaTurno === 'acquirente');
+        }
+        window.impostaRegolaTurno = impostaRegolaTurno;
 
         /**
          * BUDGET DI PARTENZA, PER SQUADRA.
@@ -150,7 +191,10 @@
             }
             el.style.display = 'block';
             el.innerHTML = '📣 È il turno di chiamata di <strong>' +
-                escapeAttr(prossimo.team.name) + '</strong>';
+                escapeAttr(prossimo.team.name) + '</strong>' +
+                (regolaTurno === 'acquirente'
+                    ? '<span style="color:#64748b;font-size:11px;"> · turno dopo l\'acquirente</span>'
+                    : '');
         }
         window.aggiornaTurnoChiamata = aggiornaTurnoChiamata;
 
@@ -1060,11 +1104,22 @@
             // finiva per fermarsi di nuovo sulla stessa squadra, che chiamava
             // due volte di fila.
             //
-            // Adesso il turno riparte dalla posizione di chi ha chiamato
-            // davvero, quindi le squadre che hanno finito il reparto restano
-            // fuori dal giro finche' non si apre la fase successiva.
-            turnoIndex = chiamanteCorrente
-                ? (chiamanteCorrente.idx + 1) % 8
+            // Adesso il turno riparte dalla posizione giusta, quindi le
+            // squadre che hanno finito il reparto restano fuori dal giro
+            // finche' non si apre la fase successiva.
+            //
+            // Da quale posizione si riparte dipende dalla lega (vedi
+            // regolaTurno): dal chiamante a Fantalissandria, da chi ha
+            // comprato nella Lega Fantacalcio 1996.
+            let idxPartenza = null;
+            if (regolaTurno === 'acquirente') {
+                const posAcquirente = teamOrder.indexOf(selectedTeam);
+                if (posAcquirente !== -1) idxPartenza = posAcquirente;
+            } else if (chiamanteCorrente) {
+                idxPartenza = chiamanteCorrente.idx;
+            }
+            turnoIndex = (idxPartenza !== null)
+                ? (idxPartenza + 1) % 8
                 : (turnoIndex + 1) % 8;
 
             updateDisplay();
@@ -2384,7 +2439,6 @@
                 // d'asta. Non e' una scorciatoia sempre disponibile, e' la
                 // via d'uscita per il caso raro del nome assente dal listone.
                 const faseOra = calcolaFaseCorrente();
-                const cercato = (document.getElementById('searchAvailable') || {}).value || '';
                 list.innerHTML =
                     '<div style="padding: 18px; text-align: center; color: #64748b;">' +
                     'Nessun giocatore disponibile' +
@@ -2397,7 +2451,6 @@
                         '➕ Aggiungi ' + faseOra + ' non in lista</button>'
                     ) : '') +
                     '</div>';
-                void cercato;
                 return;
             }
 
@@ -2617,6 +2670,7 @@
         window.addEventListener('load', function() {
             verificaVersioni();
             ripristinaGiocatoriManuali();
+            aggiornaBottoniRegolaTurno();
             if (typeof PLAYERS_DATA !== 'undefined') {
                 initializeTeamFilter();
                 filterAvailable();

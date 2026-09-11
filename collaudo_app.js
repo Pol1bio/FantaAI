@@ -23,6 +23,11 @@ const vm = require('vm');
 
 const SEME = parseInt(process.argv[2] || '1', 10);
 
+// Regola del turno da collaudare: 'chiamante' (Fantalissandria) oppure
+// 'acquirente' (Lega Fantacalcio 1996). Le invarianti sul turno sono
+// diverse nei due casi, vedi piu' avanti.
+const REGOLA = (process.argv[3] === 'acquirente') ? 'acquirente' : 'chiamante';
+
 // ---------------------------------------------------------------- casualita'
 // Generatore deterministico: con lo stesso seme l'asta e' identica, cosi' un
 // fallimento si puo' riprodurre e non "sparisce" al tentativo dopo.
@@ -149,6 +154,7 @@ const stato = () => dentro('JSON.parse(JSON.stringify({teams: teams, turnoIndex:
 // ---------------------------------------------------------------- invarianti
 let faseVistaMax = -1;
 let ultimoChiamante = null;
+let ultimoAcquirente = null;
 
 function verificaInvarianti(etichetta) {
   const s = stato();
@@ -223,7 +229,9 @@ function liberi(ruolo) {
   return D.filter((p) => p.role === ruolo && !presi.has(p.id));
 }
 
-console.log('COLLAUDO STRATO APP — seme ' + SEME);
+dentro(`regolaTurno = ${JSON.stringify(REGOLA)};`);
+
+console.log('COLLAUDO STRATO APP — seme ' + SEME + ', regola turno: ' + REGOLA);
 console.log('Ordine di chiamata: ' + JSON.stringify(dentro('teamOrder')) + '\n');
 
 verificaInvarianti('stato iniziale');
@@ -239,18 +247,38 @@ while (acquisti < MAX) {
   const ch = dentro('prossimoChiamante()');
   if (!ch) break;
 
-  // Un chiamante puo' ripetersi solo se e' rimasto l'unico con slot liberi
-  if (ultimoChiamante !== null && ch.squadNum === ultimoChiamante) {
-    const t = stato().teams;
-    let altriDisponibili = 0;
-    for (let i = 1; i <= 8; i++) {
-      if (i === ch.squadNum) continue;
-      if (t[i].players.filter((p) => p.role === fase).length < LIMITI[fase]) altriDisponibili++;
+  // INVARIANTE SUL TURNO — diversa secondo la regola di lega.
+  if (REGOLA === 'chiamante') {
+    // Ordine fisso: un chiamante puo' ripetersi solo se e' rimasto l'unico
+    // con slot liberi nel reparto.
+    if (ultimoChiamante !== null && ch.squadNum === ultimoChiamante) {
+      const t = stato().teams;
+      let altriDisponibili = 0;
+      for (let i = 1; i <= 8; i++) {
+        if (i === ch.squadNum) continue;
+        if (t[i].players.filter((p) => p.role === fase).length < LIMITI[fase]) altriDisponibili++;
+      }
+      if (altriDisponibili > 0) {
+        ripetizioniIngiustificate++;
+        fallimenti.push({ passo: passi, titolo: 'chiamante ripetuto',
+          dettaglio: `Squadra ${ch.squadNum} chiama due volte di fila in ${fase} mentre altre ${altriDisponibili} squadre hanno ancora slot` });
+      }
     }
-    if (altriDisponibili > 0) {
-      ripetizioniIngiustificate++;
-      fallimenti.push({ passo: passi, titolo: 'chiamante ripetuto',
-        dettaglio: `Squadra ${ch.squadNum} chiama due volte di fila in ${fase} mentre altre ${altriDisponibili} squadre hanno ancora slot` });
+  } else if (ultimoAcquirente !== null) {
+    // Regola 1996: chi chiama deve essere la prima squadra con slot liberi
+    // partendo dalla posizione SUCCESSIVA a chi ha comprato l'ultima volta.
+    // Qui una ripetizione del chiamante e' legittima e non va segnalata.
+    const t = stato().teams;
+    const ordine = dentro('teamOrder');
+    const posAcq = ordine.indexOf(ultimoAcquirente);
+    let atteso = null;
+    for (let k = 1; k <= 8; k++) {
+      const cand = ordine[(posAcq + k) % 8];
+      if (t[cand].players.filter((p) => p.role === fase).length < LIMITI[fase]) { atteso = cand; break; }
+    }
+    if (atteso !== null && atteso !== ch.squadNum) {
+      fallimenti.push({ passo: passi, titolo: 'turno non segue chi ha comprato',
+        dettaglio: `ha comprato Squadra ${ultimoAcquirente}, dovrebbe chiamare Squadra ${atteso}, chiama invece Squadra ${ch.squadNum} (fase ${fase})` });
     }
   }
   ultimoChiamante = ch.squadNum;
@@ -295,6 +323,7 @@ while (acquisti < MAX) {
   }
 
   acquisti++; passi++;
+  ultimoAcquirente = compratore;
   verificaInvarianti(`dopo ${scelto.name} -> Squadra ${compratore}`);
 
   // ---- giocatore inserito a mano, a campione ----
@@ -336,6 +365,7 @@ while (acquisti < MAX) {
         esigi(dopoM.teams[compM].players.some(p => p.id === idM),
           'acquisto di un giocatore manuale rifiutato', nomeM + ' -> Squadra ' + compM);
         acquisti++; passi++;
+        ultimoAcquirente = compM;
         verificaInvarianti('dopo giocatore manuale ' + nomeM);
 
         // L'agente deve continuare a funzionare col listone "sporcato"
