@@ -133,8 +133,15 @@ const D = dentro('PLAYERS_DATA');
 
 // ---------------------------------------------------------------- preparazione
 dentro('teamOrder = [3,1,6,2,8,5,4,7]; orderConfirmed = true; turnoIndex = 0;');
+
+// Budget diversi per squadra, come nella Lega Fantacalcio 1996 (400 piu' il
+// residuo dell'anno prima). Se le invarianti reggono qui, reggono anche nel
+// caso piu' semplice in cui partono tutte dalla stessa cifra.
+const RESIDUI = [18, 5, 5, 43, 0, 12, 1, 6];
 for (let i = 1; i <= 8; i++) {
+  const b = 400 + RESIDUI[i - 1];
   dentro(`teams[${i}].name = 'Squadra ${i}';`);
+  dentro(`teams[${i}].budgetIniziale = ${b}; teams[${i}].budget = ${b}; teams[${i}].spent = 0;`);
 }
 
 const stato = () => dentro('JSON.parse(JSON.stringify({teams: teams, turnoIndex: turnoIndex, phaseOverride: phaseOverride}))');
@@ -147,11 +154,15 @@ function verificaInvarianti(etichetta) {
   const s = stato();
   const t = s.teams;
 
-  // 1 — contabilita': speso + residuo fa sempre il budget iniziale
+  // 1 — contabilita': speso + residuo fa il budget iniziale DI QUELLA
+  //     squadra. Non e' piu' una costante uguale per tutti: nella Lega
+  //     Fantacalcio 1996 si parte da 400 piu' il residuo dell'anno prima,
+  //     diverso per ciascuno.
   for (let i = 1; i <= 8; i++) {
-    esigi(t[i].spent + t[i].budget === BUDGET,
+    const atteso = typeof t[i].budgetIniziale === 'number' ? t[i].budgetIniziale : BUDGET;
+    esigi(t[i].spent + t[i].budget === atteso,
       'contabilita rotta',
-      `Squadra ${i}: speso ${t[i].spent} + residuo ${t[i].budget} = ${t[i].spent + t[i].budget}, atteso ${BUDGET} (${etichetta})`);
+      `Squadra ${i}: speso ${t[i].spent} + residuo ${t[i].budget} = ${t[i].spent + t[i].budget}, atteso ${atteso} (${etichetta})`);
     esigi(t[i].budget >= 0, 'budget negativo', `Squadra ${i}: ${t[i].budget}`);
     // 2 — la somma dei prezzi in rosa coincide con lo speso dichiarato
     const somma = t[i].players.reduce((a, p) => a + p.price, 0);
@@ -374,6 +385,8 @@ let completi = 0;
 for (let i = 1; i <= 8; i++) if (fine.teams[i].players.length === PER_ROSA) completi++;
 
 const manuali = dentro('PLAYERS_DATA.filter(p => p.inseritoManualmente).length');
+console.log('Budget iniziali usati: ' + [1,2,3,4,5,6,7,8].map(i => fine.teams[i].budgetIniziale).join(', '));
+console.log('Speso + residuo:       ' + [1,2,3,4,5,6,7,8].map(i => fine.teams[i].spent + '+' + fine.teams[i].budget).join(', '));
 console.log(`Acquisti registrati: ${acquisti}`);
 console.log(`Giocatori inseriti a mano durante l'asta: ${manuali}`);
 console.log(`Rose complete (25/25): ${completi}/8`);

@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.39 - APP LOGIC
+        // FANTACALCIO v3.9.9.40 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -51,7 +51,29 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.39';
+        const APP_VERSION = '3.9.9.40';
+
+        /**
+         * BUDGET DI PARTENZA, PER SQUADRA.
+         *
+         * A Fantalissandria tutte partono da 500 e BUDGET_TOTAL bastava.
+         * Nella Lega Fantacalcio 1996 si parte da 400 piu' il residuo della
+         * stagione precedente, che e' diverso per ciascuno: Dinamo Bosh 443,
+         * Real Pix 400, e cosi' via. Da qui in poi il valore va chiesto alla
+         * squadra, non alla costante — che resta come valore predefinito.
+         */
+        function budgetIniziale(teamNum) {
+            const t = teams[teamNum];
+            if (t && typeof t.budgetIniziale === 'number') return t.budgetIniziale;
+            return BUDGET_TOTAL;
+        }
+        window.budgetIniziale = budgetIniziale;
+
+        /** Come sopra, quando si ha gia' l'oggetto squadra invece del numero. */
+        function budgetInizialeDi(team) {
+            return (team && typeof team.budgetIniziale === 'number')
+                ? team.budgetIniziale : BUDGET_TOTAL;
+        }
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -263,7 +285,7 @@
             
             ['POR', 'DIF', 'CEN', 'ATT'].forEach(role => {
                 const targetPct = strategy[role];
-                const targetAmount = Math.round(BUDGET_TOTAL * targetPct);
+                const targetAmount = Math.round(budgetInizialeDi(team) * targetPct);
                 const spent = team.players.filter(p => p.role === role).reduce((sum, p) => sum + p.price, 0);
                 
                 targetBudgets[role] = targetAmount;
@@ -275,7 +297,7 @@
                     let reservedForOthers = 0;
                     ['POR', 'DIF', 'CEN', 'ATT'].forEach(otherRole => {
                         if (otherRole !== role && missingRoles[otherRole] > 0) {
-                            const otherTarget = Math.round(BUDGET_TOTAL * strategy[otherRole]);
+                            const otherTarget = Math.round(budgetInizialeDi(team) * strategy[otherRole]);
                             const otherSpent = team.players.filter(p => p.role === otherRole).reduce((sum, p) => sum + p.price, 0);
                             const otherNeeded = Math.max(0, otherTarget - otherSpent);
                             reservedForOthers += otherNeeded;
@@ -299,9 +321,15 @@
         function initializeTeams(names = null) {
             teams = {};
             for (let i = 1; i <= 8; i++) {
+                // Conserva il budget iniziale gia' impostato per questa
+                // squadra (es. corretto a mano nella schermata dei residui),
+                // altrimenti parte dal predefinito.
+                const precedente = teams && teams[i] && typeof teams[i].budgetIniziale === 'number'
+                    ? teams[i].budgetIniziale : BUDGET_TOTAL;
                 teams[i] = {
                     name: names ? names[i-1] : `Squadra ${i}`,
-                    budget: BUDGET_TOTAL,
+                    budgetIniziale: precedente,
+                    budget: precedente,
                     spent: 0,
                     players: []
                 };
@@ -1172,12 +1200,12 @@
 
             document.getElementById('mySpent').textContent = myTeam.spent;
             document.getElementById('mySpentPct').textContent = 
-                `${((myTeam.spent / BUDGET_TOTAL) * 100).toFixed(1)}%`;
+                `${((myTeam.spent / budgetInizialeDi(myTeam)) * 100).toFixed(1)}%`;
             
             document.getElementById('playerCount').textContent = `${myTeam.players.length}/${PLAYERS_PER_SQUAD}`;
             document.getElementById('budgetLeft').textContent = myTeam.budget;
             document.getElementById('budgetLeftPct').textContent = 
-                `${((myTeam.budget / BUDGET_TOTAL) * 100).toFixed(1)}%`;
+                `${((myTeam.budget / budgetInizialeDi(myTeam)) * 100).toFixed(1)}%`;
 
             const counts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
             myTeam.players.forEach(p => counts[p.role]++);
@@ -1205,7 +1233,7 @@
                     const spent = myTeam.players.filter(p => p.role === role).reduce((sum, p) => sum + p.price, 0);
                     const targetAmount = budgetData.targetBudgets[role];
                     const targetPct = (strategy[role] * 100).toFixed(0);
-                    const spentPct = ((spent / BUDGET_TOTAL) * 100).toFixed(1);
+                    const spentPct = ((spent / budgetInizialeDi(myTeam)) * 100).toFixed(1);
                     const missing = limit - current;
                     
                     let statusIcon = '✅';
@@ -1379,8 +1407,8 @@
 
                 const isMine = i === 1;
                 const isLeader = i === leader && t.budget > 0;
-                const spentPct = Math.round((t.spent / BUDGET_TOTAL) * 100);
-                const budgetPct = Math.round((t.budget / BUDGET_TOTAL) * 100);
+                const spentPct = Math.round((t.spent / budgetInizialeDi(t)) * 100);
+                const budgetPct = Math.round((t.budget / budgetInizialeDi(t)) * 100);
 
                 const slotLiberi = PLAYERS_PER_SQUAD - t.players.length;
                 // Tenendo 1 credito per ogni altro slot da riempire
@@ -1400,7 +1428,7 @@
                     // Una cifra decimale con la virgola: sotto il 10% servono
                     // i decimi per distinguere due reparti, sopra restano
                     // leggibili lo stesso.
-                    const quota = ((speso / BUDGET_TOTAL) * 100).toFixed(1).replace('.', ',');
+                    const quota = ((speso / budgetInizialeDi(t)) * 100).toFixed(1).replace('.', ',');
                     ruoliHtml += `<span class="ld-role${pieno ? ' full' : ''}${inFase ? ' now' : ''}">` +
                                  `${role.charAt(0)}<b>${n}</b>/${lim}` +
                                  `<em>${speso}M</em><i>${quota}%</i></span>`;
@@ -1446,8 +1474,8 @@
                 const i = displayOrder[idx];
                 const team = teams[i];
                 const isMyTeam = i === 1;
-                const spentPct = ((team.spent / BUDGET_TOTAL) * 100).toFixed(1);
-                const budgetPct = ((team.budget / BUDGET_TOTAL) * 100).toFixed(1);
+                const spentPct = ((team.spent / budgetInizialeDi(team)) * 100).toFixed(1);
+                const budgetPct = ((team.budget / budgetInizialeDi(team)) * 100).toFixed(1);
 
                 const playersByRole = { POR: [], DIF: [], CEN: [], ATT: [] };
                 team.players.forEach(p => {
@@ -1459,11 +1487,11 @@
                     if (playersByRole[role].length > 0) {
                         // Calcola totale speso per questo ruolo
                         const roleTotal = playersByRole[role].reduce((sum, p) => sum + p.price, 0);
-                        const rolePct = ((roleTotal / BUDGET_TOTAL) * 100).toFixed(1);
+                        const rolePct = ((roleTotal / budgetInizialeDi(team)) * 100).toFixed(1);
                         
                         playersHtml += `<div class="team-role">${role} (${roleTotal}M, ${rolePct}%)</div>`;
                         playersByRole[role].forEach(p => {
-                            const playerPct = ((p.price / BUDGET_TOTAL) * 100).toFixed(1);
+                            const playerPct = ((p.price / budgetInizialeDi(team)) * 100).toFixed(1);
                             const teamAbbr = getTeamAbbr(p.team);
                             const tier = tierById[p.id] || '-';
                             playersHtml += `<div class="team-player-row">
@@ -1887,7 +1915,7 @@
                 for (let i = 1; i <= 8; i++) {
                     teams[i].players = [];
                     teams[i].spent = 0;
-                    teams[i].budget = BUDGET_TOTAL;
+                    teams[i].budget = budgetIniziale(i);
                 }
                 
                 // Resetta la conversazione con l'agente IA
@@ -1937,7 +1965,7 @@
             if (confirm('Sei sicuro?')) {
                 teams[1].players = [];
                 teams[1].spent = 0;
-                teams[1].budget = BUDGET_TOTAL;
+                teams[1].budget = budgetIniziale(1);
                 saveData();
                 updateDisplay();
                 renderTeamsOverview();
