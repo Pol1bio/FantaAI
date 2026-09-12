@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.45 - APP LOGIC
+        // FANTACALCIO v3.9.9.46 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -276,7 +276,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.45';
+        const APP_VERSION = '3.9.9.46';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -1681,7 +1681,21 @@
             const box = document.getElementById('leagueDashboard');
             if (!box) return;
 
-            const ordine = orderConfirmed ? teamOrder : [1, 2, 3, 4, 5, 6, 7, 8];
+            /**
+             * Ordinati per crediti residui, dal piu' ricco al piu' povero.
+             *
+             * In asta la domanda ricorrente e' "chi puo' ancora permetterselo":
+             * averli in ordine di ricchezza risponde a colpo d'occhio, senza
+             * dover cercare la squadra nella griglia. A parita' di residuo
+             * vince l'ordine di chiamata, cosi' l'ordine resta stabile e non
+             * balla fra un render e l'altro.
+             */
+            const base = orderConfirmed ? teamOrder : [1, 2, 3, 4, 5, 6, 7, 8];
+            const ordine = base.slice().sort((a, b) => {
+                const ta = teams[a], tb = teams[b];
+                if (!ta || !tb) return 0;
+                return (tb.budget - ta.budget) || (base.indexOf(a) - base.indexOf(b));
+            });
             const fase = calcolaFaseCorrente();
 
             // Chipleader = chi ha piu' budget residuo (a parita', chi ha piu'
