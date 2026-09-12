@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.43 - APP LOGIC
+        // FANTACALCIO v3.9.9.44 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -82,6 +82,14 @@
             BUDGET_TOTAL = L.budgetBase;
             regolaTurno = L.regolaTurno;
             try { localStorage.setItem('regolaTurno', regolaTurno); } catch (e) {}
+
+            // Riconfigura anche l'agente: rosa, budget e soprattutto il
+            // modificatore difesa, che nella 1996 non esiste e va spento.
+            try {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.configuraLega) {
+                    AI_AGENT.configuraLega(L);
+                }
+            } catch (e) { console.warn('configuraLega non riuscita:', e); }
 
             const titolo = document.getElementById('appTitle');
             if (titolo) titolo.textContent = L.titolo;
@@ -195,7 +203,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.43';
+        const APP_VERSION = '3.9.9.44';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.

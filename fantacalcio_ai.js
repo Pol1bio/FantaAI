@@ -1146,7 +1146,7 @@
          * in ogni scheda e nel riquadro del giocatore nell'app.
          */
         convenienzaListone: p.valueScore,
-        verdetto: p.verdict,
+        verdetto: this.verdetto(p),
         prezzoMercato: p.pma,
         /**
          * In asta si offrono solo interi da 1 in su: un tetto tipo "0.7"
@@ -1155,11 +1155,11 @@
          * minimo offribile e si segnala con soloRiempitivo.
          */
         prezzoMaxConsigliato: (() => {
-          const t = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+          const t = this.tettoPrezzo(p);
           return (t != null && t < 1) ? 1 : t;
         })(),
         soloRiempitivo: (() => {
-          const t = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+          const t = this.tettoPrezzo(p);
           return t != null && t < 1;
         })(),
         titolarita: p.expectedTitolarita,
@@ -1167,8 +1167,13 @@
         trend: p.trend,
         consistenza: p.consistency,
         affidabilitaDati: p.dataQuality,
-        modificatore: p.modLabel || null,
-        mediaVoto: p.modMediaVoto || p.mvStorica || null,
+        // Senza modificatore le etichette del listone (modLabel,
+        // modMediaVoto) descrivono una regola che in questa lega non
+        // esiste: si tace invece di riportare un giudizio fuori contesto.
+        modificatore: this.defenseModifier ? (p.modLabel || null) : null,
+        mediaVoto: this.defenseModifier
+          ? (p.modMediaVoto || p.mvStorica || null)
+          : (p.mvStorica || null),
         piazzati: p.setPieces || [],
         /**
          * Rischi aggiuntivi calcolati qui (non nel listone originale):
@@ -1233,7 +1238,7 @@
         nome: p.name,
         tier: p.tierConsensus || p.tier,
         titolarita: p.expectedTitolarita,
-        verdetto: p.verdict,
+        verdetto: this.verdetto(p),
         prezzoMercato: p.pma
       }));
       out.altriNonMostrati = Math.max(0, tutti.length - max);
@@ -1272,20 +1277,55 @@
       return c;
     }
 
+    /**
+     * Tetto di prezzo consigliato per un giocatore.
+     *
+     * maxPriceLega non e' un prezzo di mercato: e' il prezzo gia' CORRETTO
+     * per il modificatore difesa, cioe' per le regole di Fantalissandria.
+     * In una lega senza modificatore quel tetto sovrastima portieri e
+     * difensori (fino al +20% su circa 148 giocatori) e va ignorato: si
+     * torna al prezzo base di listino.
+     */
+    /**
+     * Il verdetto precalcolato del listone, ripulito se necessario.
+     *
+     * Otto giocatori hanno verdict "OCCASIONE DA MODIFICATORE": sono gli
+     * stessi modBargain. Senza modificatore quella frase e' semplicemente
+     * falsa — descrive un vantaggio che in questa lega non esiste — e va
+     * sostituita invece che mostrata.
+     */
+    verdetto(p) {
+      const v = p.verdict;
+      if (!this.defenseModifier && v && /MODIFICATOR/i.test(v)) {
+        return 'nessun giudizio sintetico';
+      }
+      return v;
+    }
+
+    tettoPrezzo(p) {
+      if (!this.defenseModifier) {
+        return (p.pfc !== undefined && p.pfc !== null) ? p.pfc : p.pma;
+      }
+      return p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+    }
+
     /** Frase secca da leggere in asta. */
     giudizio(p) {
       const parti = [];
-      const max = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+      const max = this.tettoPrezzo(p);
 
-      parti.push(p.name + ': ' + (p.verdict || 'dati insufficienti') + '.');
+      parti.push(p.name + ': ' + (this.verdetto(p) || 'dati insufficienti') + '.');
       if (max !== null && max !== undefined) {
+        // leagueAdjustNote spiega un aggiustamento fatto PER il modificatore:
+        // senza modificatore non ha senso mostrarlo.
         parti.push('Non superare ' + max + ' crediti' +
-          (p.leagueAdjustNote ? ' (' + p.leagueAdjustNote + ')' : '') + '.');
+          ((this.defenseModifier && p.leagueAdjustNote)
+            ? ' (' + p.leagueAdjustNote + ')' : '') + '.');
       }
       if (p.pma !== null && p.pma !== undefined) {
         parti.push('Il mercato lo paga intorno a ' + p.pma + '.');
       }
-      if (p.modBargain) parti.push(p.modBargainNote + '.');
+      if (this.defenseModifier && p.modBargain) parti.push(p.modBargainNote + '.');
       const avvC = avvisoCampione(p);
       if (avvC && (p.mvStorica != null || p.fmStorica != null)) {
         parti.push('Cautela sui numeri: ' + avvC + '.');
@@ -1322,7 +1362,7 @@
       const analysis = this.analyzeTeam(team, strategyKey);
       const role = normRole(player.role);
       const a = analysis[role];
-      const max = player.maxPriceLega !== undefined ? player.maxPriceLega : player.pfc;
+      const max = this.tettoPrezzo(player);
 
       const limiti = [];
       if (max !== null && max !== undefined) {
@@ -1429,10 +1469,10 @@
        * essere presa come verita' assoluta.
        */
       let correttivoLega = null;
-      if (typeof STORICO_MANAGER !== 'undefined' && STORICO_MANAGER.correttivoPrezzoPerTier &&
-          player.tierLaudantes) {
+      const storeCorr = this.storicoInUso();
+      if (storeCorr && storeCorr.correttivoPrezzoPerTier && player.tierLaudantes) {
         const chiave = role + '_' + player.tierLaudantes;
-        const c = STORICO_MANAGER.correttivoPrezzoPerTier[chiave];
+        const c = storeCorr.correttivoPrezzoPerTier[chiave];
         if (c) {
           correttivoLega = c.rapporto > 1
             ? 'In questa lega gli ' + player.tierLaudantes + ' ' + role +
@@ -1541,7 +1581,7 @@
         sogliaRendimento: sogliaRendimento,
         tuttiILimiti: limiti,
         slotRimanentiNelRuolo: a ? a.needed : null,
-        verdetto: player.verdict,
+        verdetto: this.verdetto(player),
         giudizio: this.giudizio(player)
       };
     }
@@ -1565,10 +1605,30 @@
      * squadra con un nome diverso da quello storico, non lo trova, e va
      * bene cosi' — meglio nessun dato che un aggancio sbagliato.
      */
+    /**
+     * Il modulo storico della lega SELEZIONATA nell'app.
+     *
+     * Prima qui si leggeva sempre STORICO_MANAGER, cioe' Fantalissandria.
+     * Con due leghe attive significava che all'asta della 1996 i profili
+     * degli avversari sarebbero stati quelli dell'altra lega: nomi che non
+     * combaciano nel caso fortunato, agganci sbagliati nel caso peggiore.
+     *
+     * L'app espone window.storicoLega(); se non c'e' (agente usato da solo,
+     * o pagina vecchia) si ricade su STORICO_MANAGER come prima.
+     */
+    storicoInUso() {
+      if (typeof window !== 'undefined' && typeof window.storicoLega === 'function') {
+        const s = window.storicoLega();
+        if (s) return s;
+      }
+      if (typeof STORICO_MANAGER !== 'undefined') return STORICO_MANAGER;
+      if (typeof window !== 'undefined' && window.STORICO_MANAGER) return window.STORICO_MANAGER;
+      return null;
+    }
+
     profiloStoricoManager(nomeSquadra) {
-      const store = (typeof STORICO_MANAGER !== 'undefined') ? STORICO_MANAGER
-                   : (typeof window !== 'undefined' ? window.STORICO_MANAGER : null);
-      if (!store || !nomeSquadra) return null;
+      const store = this.storicoInUso();
+      if (!store || !store.manager || !nomeSquadra) return null;
 
       const norm = (s) => String(s || '').toUpperCase().trim().replace(/\s+/g, ' ');
       const chiave = Object.keys(store.manager).find((k) => norm(k) === norm(nomeSquadra));
@@ -2259,8 +2319,8 @@
        * su quella persona), ma se fra le squadre ancora a caccia di questo
        * ruolo ce n'e' una con uno storico di sovrapprezzo marcato proprio
        * qui, vale la pena saperlo prima di entrare in un rilancio con lei.
-       * Funziona solo se STORICO_MANAGER e' caricato (Fantalissandria) e i
-       * nomi squadra corrispondono: altrimenti non aggiunge nulla, senza
+       * Funziona solo se il modulo storico della lega in uso e' caricato e
+       * i nomi squadra corrispondono: altrimenti non aggiunge nulla, senza
        * errori.
        */
       let notaComportamento = '';
@@ -2552,6 +2612,25 @@
   // ---------------------------------------------------------- integrazione
 
   const AI_AGENT = new FantacalcioAIAgent();
+
+  /**
+   * Riallinea l'agente alle regole della lega selezionata nell'app.
+   *
+   * L'agente viene costruito una volta sola al caricamento, leggendo
+   * LEAGUE_RULES. Con due leghe attive serve poterlo riconfigurare senza
+   * ricostruirlo: cambiano la rosa, il budget di riferimento e soprattutto
+   * il modificatore difesa, che e' attivo a Fantalissandria e assente nella
+   * Lega Fantacalcio 1996.
+   */
+  AI_AGENT.configuraLega = function (cfg) {
+    if (!cfg) return;
+    if (typeof cfg.playersPerSquad === 'number') this.squadSize = cfg.playersPerSquad;
+    if (cfg.roleLimits) this.roleLimits = Object.assign({}, cfg.roleLimits);
+    if (typeof cfg.budgetBase === 'number') this.budgetTotal = cfg.budgetBase;
+    if (typeof cfg.modificatoreDifesa === 'boolean') {
+      this.defenseModifier = cfg.modificatoreDifesa;
+    }
+  };
 
   const getPlayers = () =>
     (typeof PLAYERS_DATA !== 'undefined' && PLAYERS_DATA) ? PLAYERS_DATA : [];
