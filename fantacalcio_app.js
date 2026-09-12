@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.44 - APP LOGIC
+        // FANTACALCIO v3.9.9.45 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -138,6 +138,79 @@
         }
         window.applicaBudgetDiLega = applicaBudgetDiLega;
 
+        /**
+         * SCHERMATA DI CONFERMA DEI CREDITI DI PARTENZA.
+         *
+         * Compare solo dove il budget non e' uguale per tutti — oggi la sola
+         * Lega Fantacalcio 1996, dove si parte da 400 piu' il residuo non
+         * speso della stagione precedente. Quei residui vengono da un conteggio
+         * esterno e possono essere contestati al tavolo: qui si correggono
+         * prima di cominciare.
+         *
+         * Va fatto PRIMA del primo acquisto: cambiare il budget iniziale ad
+         * asta avviata vorrebbe dire decidere cosa fare dello speso, ed e' un
+         * caso in piu' senza un vero bisogno.
+         */
+        function mostraConfermaBudget() {
+            const sez = document.getElementById('budgetSection');
+            if (!sez) return;
+            if (!lega().budgetPerSquadra) { sez.style.display = 'none'; return; }
+
+            const gia = Object.keys(teams).some(k => (teams[k].players || []).length > 0);
+            if (gia) { sez.style.display = 'none'; return; }
+
+            const grid = document.getElementById('budgetGrid');
+            let html = '';
+            const ordine = (orderConfirmed && teamOrder.length) ? teamOrder : [1,2,3,4,5,6,7,8];
+            ordine.forEach(i => {
+                const t = teams[i];
+                if (!t) return;
+                html += `
+                    <div class="setup-input-group">
+                        <label>${escapeHtml(t.name)}</label>
+                        <input type="number" id="budgetInput${i}" min="1" max="2000"
+                               value="${budgetIniziale(i)}">
+                    </div>`;
+            });
+            grid.innerHTML = html;
+            sez.style.display = 'block';
+        }
+        window.mostraConfermaBudget = mostraConfermaBudget;
+
+        function confermaBudget() {
+            const nuovi = {};
+            for (let i = 1; i <= 8; i++) {
+                if (!teams[i]) continue;
+                const el = document.getElementById('budgetInput' + i);
+                if (!el) continue;
+                const v = parseInt(el.value, 10);
+                if (!v || v < 1) {
+                    alert('Crediti non validi per ' + teams[i].name);
+                    return;
+                }
+                nuovi[i] = v;
+            }
+            Object.keys(nuovi).forEach(i => {
+                teams[i].budgetIniziale = nuovi[i];
+                teams[i].budget = nuovi[i] - (teams[i].spent || 0);
+            });
+            document.getElementById('budgetSection').style.display = 'none';
+            saveData();
+            updateDisplay();
+            renderTeamsOverview();
+            const tot = Object.values(nuovi).reduce((s, v) => s + v, 0);
+            showMessage('Crediti confermati (' + tot + ' in totale sulle 8 squadre).', 'success');
+        }
+        window.confermaBudget = confermaBudget;
+
+        /** Rimette i valori previsti dalla configurazione di lega. */
+        function ripristinaBudgetDiLega() {
+            applicaBudgetDiLega();
+            mostraConfermaBudget();
+            showMessage('Ripristinati i crediti di partenza previsti per ' + lega().nome + '.', 'success');
+        }
+        window.ripristinaBudgetDiLega = ripristinaBudgetDiLega;
+
         function cambiaLega(chiave) {
             if (!LEGHE[chiave] || chiave === legaCorrente) return;
             if (!confirm('Passare a ' + LEGHE[chiave].nome +
@@ -203,7 +276,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.44';
+        const APP_VERSION = '3.9.9.45';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -805,6 +878,11 @@
             renderTeamsOverview();
             loadData();
             aggiornaTurnoChiamata();
+
+            // Nelle leghe a budget differenziato si passa dalla conferma dei
+            // crediti prima di cominciare: i residui dell'anno prima possono
+            // essere contestati, e correggerli ad asta avviata non e' previsto.
+            mostraConfermaBudget();
         }
 
         function resetSetup() {

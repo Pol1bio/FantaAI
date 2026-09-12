@@ -454,6 +454,69 @@
      * alta e prezzo basso. I listoni li sottovalutano perche' ragionano su una
      * lega senza modificatore difesa.
      */
+    /**
+     * DIFENSORI CHE PORTANO BONUS — il rovescio di modificatoreBargains().
+     *
+     * Col modificatore difesa conta il VOTO PURO, quindi i difensori pieni
+     * di bonus sono sopravvalutati rispetto a quanto rendono, e i "grigi"
+     * con voto alto sono le occasioni: e' quello che cerca modBargain.
+     *
+     * Senza modificatore la logica si capovolge. Conta solo il fantavoto, e
+     * l'apporto di bonus diventa tutto. Misurato come fantamedia storica
+     * meno media voto, sui difensori con almeno 40 presenze, va da +0.77 di
+     * Dimarco a -0.16: circa 35 punti stagione di differenza a parita' di
+     * voto. Il listone non ha un campo per questo — modBargain segnala
+     * l'esatto contrario — quindi si calcola qui.
+     *
+     * Ordinati per punti stagione per credito: in asta conta quanto bonus
+     * porta uno slot, non il bonus in assoluto.
+     *
+     * Restituisce [] quando il modificatore e' attivo: li' varrebbe il
+     * criterio opposto, e mostrare entrambi confonderebbe.
+     */
+    apportoBonusDifensori(availables, limit) {
+      if (this.defenseModifier) return [];
+
+      const presenze = (p) => ['2324', '2425', '2526', '2627']
+        .reduce((s, a) => s + (p['pv_' + a] || 0), 0);
+
+      const candidati = (availables || []).filter((p) =>
+        normRole(p.role) === 'DIF' &&
+        p.fmStorica != null && p.mvStorica != null &&
+        presenze(p) >= 40 &&                     // sotto, il dato non regge
+        (p.fmStorica - p.mvStorica) >= 0.15 &&   // apporto non trascurabile
+        (p.pfc != null ? p.pfc : p.pma) > 0 &&
+        (p.pfc != null ? p.pfc : p.pma) <= 15    // sopra, il bonus lo stai pagando
+      );
+
+      const conValore = candidati.map((p) => {
+        const apporto = p.fmStorica - p.mvStorica;
+        const prezzo = p.pfc != null ? p.pfc : p.pma;
+        return {
+          p: p,
+          apporto: apporto,
+          punti: apporto * 38,
+          prezzo: prezzo,
+          perCredito: (apporto * 38) / prezzo
+        };
+      });
+
+      conValore.sort((a, b) => b.perCredito - a.perCredito);
+
+      return conValore.slice(0, limit || 10).map((x) => {
+        const c = this.playerCard(x.p);
+        const piazzati = (x.p.penaltyProbability || 0) >= 20 ||
+                         (x.p.freeKickProbability || 0) >= 20;
+        c.apportoBonus = round2(x.apporto);
+        c.puntiBonusStagione = round1(x.punti);
+        c.perche = 'porta ' + round1(x.punti) + ' punti stagione di soli bonus ' +
+                   '(+' + round2(x.apporto) + ' a partita sopra il suo voto), ' +
+                   'e costa ' + x.prezzo +
+                   (piazzati ? '. Batte anche i piazzati' : '');
+        return c;
+      });
+    }
+
     modificatoreBargains(availables, limit, team, allPlayers) {
       if (!this.defenseModifier) return [];
       const lista = availables
@@ -2595,6 +2658,7 @@
                               bf.titolariMancanti === 0 &&
                               bf.panchinariMancanti > 0),
         occasioniModificatore: this.modificatoreBargains(inFase, 8, team, allPlayers),
+        difensoriDaBonus: this.apportoBonusDifensori(inFase, 8),
         specialistiPiazzati: this.specialisti(inFase, 6),
         trappole: this.trappole(inFase, 6),
         mercato: this.pressioneMercato(allTeams, mine),
@@ -2966,6 +3030,16 @@
         L.push('- ' + c.nome + ' (' + c.ruolo + ', ' + c.squadra + ') media voto ' +
                c.mediaVoto + ', mercato ~' + c.prezzoMercato + ' — ' + c.perche);
         if (c.impattoSulMioBlocco) L.push('  SUL MIO BLOCCO: ' + c.impattoSulMioBlocco);
+      });
+    }
+    if (r.difensoriDaBonus && r.difensoriDaBonus.length) {
+      L.push('');
+      L.push('DIFENSORI CHE PORTANO BONUS');
+      L.push('(senza modificatore conta il fantavoto, non il voto: fra il difensore');
+      L.push('che porta piu bonus e quello che ne porta meno ballano ~35 punti');
+      L.push('stagione a parita di voto. Ordinati per punti per credito)');
+      r.difensoriDaBonus.forEach((c) => {
+        L.push('- ' + c.nome + ' (' + c.squadra + ') — ' + c.perche);
       });
     }
     if (r.specialistiPiazzati.length) {

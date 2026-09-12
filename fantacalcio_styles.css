@@ -1465,3 +1465,25 @@ input:checked + .toggle-slider:before {
     padding: 6px 10px;
     border-radius: 4px;
 }
+
+
+/* Coppia etichetta + campo nelle schermate di setup (ordine di chiamata e
+   conferma crediti). La classe era usata dal codice ma non aveva regole:
+   funzionava per via degli stili su .setup-grid input, senza pero' che
+   l'etichetta avesse un aspetto proprio. */
+.setup-input-group label {
+    display: block;
+    font-size: 11px;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.setup-input-group input,
+.setup-input-group select {
+    width: 100%;
+}
