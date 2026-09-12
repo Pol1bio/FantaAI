@@ -1,12 +1,40 @@
 // Profili storici manager — Lega Fantacalcio 1996 (aste 2023/24-2025/26)
-// Generato da Storico_Lega_Fantacalcio_1996.xlsx.
-// Gemello di storico_fantalissandria.js: stessa struttura, stessa pipeline.
+// Generato da Storico_Lega_Fantacalcio_1996.xlsx + tabelle Laudantes.
+// Gemello di storico_fantalissandria.js: stessa struttura e metodologia.
 const STORICO_MANAGER_1996 = {
  "generato": "2026-09-11",
  "lega": "Lega Fantacalcio 1996",
- "fonte": "Verbali asta 2023-24, 2024-25, 2025-26 (file Storico_Lega_Fantacalcio_1996.xlsx)",
- "noteMetodo": "Quote per ruolo e concentrazione pesate per recenza (peso 1/2/3 per 2023-24/2024-25/2025-26). Le stagioni mancanti per un manager sono escluse dalla media, non contate come zero. Nomi dei giocatori NON normalizzati contro il listone corrente: tre anni di mercato rendono il matching diretto inaffidabile, e questo file serve al PROFILO DI SPESA dei manager, non al prezzo dei singoli. Il foglio \"2020-21\" del file sorgente è stato scartato: contiene solo totali crediti, nessun nome di giocatore. Rosa di 24 giocatori (3 POR, 7 DIF, 8 CEN, 6 ATT): le quote per ruolo NON sono confrontabili una a una con quelle di Fantalissandria, che ha 8 difensori.",
- "noteIndiceSovrapprezzo": "NON calcolato per questa lega. Per Fantalissandria si ricavava incrociando i prezzi pagati con le fasce Laudantes delle stagioni corrispondenti; per la 1996 quelle fasce non sono disponibili, e dedurle dal listone attuale darebbe più errori che informazione. L'agente deve trattarne l'assenza come dato mancante, non come zero.",
+ "fonte": "Verbali asta 2023-24, 2024-25, 2025-26 (Storico_Lega_Fantacalcio_1996.xlsx)",
+ "fonteTier": {
+  "2023-24": "Laudantes_2023_24.xlsx, foglio TIERS (fasce sulle colonne)",
+  "2024-25": "Laudantes_2024_25_tier.xlsx, fogli per reparto (fasce sulle righe)",
+  "2025-26": "TABELLE_2025_2026_laudantes_new.xlsx, foglio TABELLE COMPLETE"
+ },
+ "noteMetodo": "Quote per ruolo e concentrazione pesate per recenza (peso 1/2/3 per 2023-24/2024-25/2025-26). Le stagioni mancanti per un manager sono escluse dalla media, non contate come zero. Rosa di 24 giocatori (3 POR, 7 DIF, 8 CEN, 6 ATT): le quote per ruolo NON sono confrontabili una a una con quelle di Fantalissandria, che ha 8 difensori. Il foglio \"2020-21\" del file sorgente e' stato scartato: contiene solo totali crediti, nessun nome.",
+ "noteMetodoIndiceTier": "Indice = media geometrica (non aritmetica: i prezzi hanno una coda lunga verso l'alto, la media aritmetica dei rapporti sarebbe distorta in modo sistematico verso il sovrapprezzo per qualunque manager) del rapporto fra prezzo pagato e prezzo mediano di lega per quel tier e ruolo, pesata per recenza. 1.00 = paga il prezzo giusto. Soglia minima 5 osservazioni per cella. I portieri sono esclusi: nelle tabelle Laudantes non hanno fasce numeriche ma slot. Nomi abbinati al tier dell'anno con corrispondenza esatta piu' tollerante (cognome, prefisso, distanza editoriale) per assorbire le storpiature dei verbali.",
+ "baselinePrezzoPerTier": {
+  "DIF_B-": 2.0,
+  "DIF_C-": 3.0,
+  "DIF_B+": 6.0,
+  "CEN_B": 2.0,
+  "CEN_A": 13.0,
+  "CEN_B+": 9.0,
+  "ATT_S": 137.0,
+  "ATT_B": 7.0,
+  "ATT_C": 1.0,
+  "DIF_A-": 4.0,
+  "DIF_C+": 1.0,
+  "ATT_A": 71.0,
+  "DIF_A": 7.0,
+  "DIF_B": 2.0,
+  "CEN_A-": 11.0,
+  "DIF_A+": 13.0,
+  "CEN_C+": 4.0,
+  "CEN_A+": 21.5,
+  "CEN_A--": 6.5,
+  "ATT_A-": 38.0,
+  "ATT_A--": 24.0
+ },
  "mediaLega": {
   "quotePerRuolo": {
    "P": 7.1,
@@ -71,7 +99,25 @@ const STORICO_MANAGER_1996 = {
     "C": 26.1,
     "A": 53.7
    },
-   "concentrazioneMediaPesata": 48.8
+   "concentrazioneMediaPesata": 48.8,
+   "indiceSovrapprezzo": {
+    "indice": 1.12,
+    "n": 46
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.07,
+     "n": 16
+    },
+    "CEN": {
+     "indice": 1.13,
+     "n": 13
+    },
+    "ATT": {
+     "indice": 1.17,
+     "n": 17
+    }
+   }
   },
   "BOCA MOMIX": {
    "stagioniDisponibili": [
@@ -127,7 +173,25 @@ const STORICO_MANAGER_1996 = {
     "C": 22.4,
     "A": 61.8
    },
-   "concentrazioneMediaPesata": 62.6
+   "concentrazioneMediaPesata": 62.6,
+   "indiceSovrapprezzo": {
+    "indice": 0.73,
+    "n": 48
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.79,
+     "n": 18
+    },
+    "CEN": {
+     "indice": 0.93,
+     "n": 14
+    },
+    "ATT": {
+     "indice": 0.54,
+     "n": 16
+    }
+   }
   },
   "DINAMO BOSH": {
    "stagioniDisponibili": [
@@ -183,7 +247,25 @@ const STORICO_MANAGER_1996 = {
     "C": 23.6,
     "A": 55.8
    },
-   "concentrazioneMediaPesata": 53.2
+   "concentrazioneMediaPesata": 53.2,
+   "indiceSovrapprezzo": {
+    "indice": 0.84,
+    "n": 39
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.91,
+     "n": 13
+    },
+    "CEN": {
+     "indice": 0.97,
+     "n": 11
+    },
+    "ATT": {
+     "indice": 0.69,
+     "n": 15
+    }
+   }
   },
   "FANTAMACHO": {
    "stagioniDisponibili": [
@@ -239,7 +321,25 @@ const STORICO_MANAGER_1996 = {
     "C": 22.1,
     "A": 61.9
    },
-   "concentrazioneMediaPesata": 54.7
+   "concentrazioneMediaPesata": 54.7,
+   "indiceSovrapprezzo": {
+    "indice": 1.03,
+    "n": 51
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.93,
+     "n": 17
+    },
+    "CEN": {
+     "indice": 0.99,
+     "n": 18
+    },
+    "ATT": {
+     "indice": 1.2,
+     "n": 16
+    }
+   }
   },
   "MARCHINHOS": {
    "stagioniDisponibili": [
@@ -295,7 +395,25 @@ const STORICO_MANAGER_1996 = {
     "C": 26.6,
     "A": 56.8
    },
-   "concentrazioneMediaPesata": 60.8
+   "concentrazioneMediaPesata": 60.8,
+   "indiceSovrapprezzo": {
+    "indice": 0.82,
+    "n": 44
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.79,
+     "n": 20
+    },
+    "CEN": {
+     "indice": 0.8,
+     "n": 8
+    },
+    "ATT": {
+     "indice": 0.88,
+     "n": 16
+    }
+   }
   },
   "MOTTENTUS": {
    "stagioniDisponibili": [
@@ -351,7 +469,25 @@ const STORICO_MANAGER_1996 = {
     "C": 36.9,
     "A": 39.3
    },
-   "concentrazioneMediaPesata": 47.4
+   "concentrazioneMediaPesata": 47.4,
+   "indiceSovrapprezzo": {
+    "indice": 0.97,
+    "n": 47
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 1.35,
+     "n": 18
+    },
+    "CEN": {
+     "indice": 1.63,
+     "n": 14
+    },
+    "ATT": {
+     "indice": 0.44,
+     "n": 15
+    }
+   }
   },
   "REAL PIX": {
    "stagioniDisponibili": [
@@ -407,7 +543,25 @@ const STORICO_MANAGER_1996 = {
     "C": 21.1,
     "A": 64.8
    },
-   "concentrazioneMediaPesata": 62.4
+   "concentrazioneMediaPesata": 62.4,
+   "indiceSovrapprezzo": {
+    "indice": 0.73,
+    "n": 40
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.64,
+     "n": 16
+    },
+    "CEN": {
+     "indice": 1.32,
+     "n": 12
+    },
+    "ATT": {
+     "indice": 0.48,
+     "n": 12
+    }
+   }
   },
   "SPARTA BRAGA": {
    "stagioniDisponibili": [
@@ -463,7 +617,25 @@ const STORICO_MANAGER_1996 = {
     "C": 20.5,
     "A": 64.7
    },
-   "concentrazioneMediaPesata": 51.8
+   "concentrazioneMediaPesata": 51.8,
+   "indiceSovrapprezzo": {
+    "indice": 0.8,
+    "n": 45
+   },
+   "indiceSovrapprezzoPerRuolo": {
+    "DIF": {
+     "indice": 0.79,
+     "n": 18
+    },
+    "CEN": {
+     "indice": 0.71,
+     "n": 11
+    },
+    "ATT": {
+     "indice": 0.9,
+     "n": 16
+    }
+   }
   }
  },
  "partecipanti202627": [
@@ -476,7 +648,6 @@ const STORICO_MANAGER_1996 = {
   "SPARTA BRAGA",
   "FANTAMACHO"
  ],
- "noteParteciapnti": "MARCHINHOS è la squadra di Polibio, messa in prima posizione perché l'app tratta la squadra 1 come la propria.",
  "budgetIniziali202627": {
   "MARCHINHOS": 418,
   "BOCA MOMIX": 405,
@@ -487,7 +658,7 @@ const STORICO_MANAGER_1996 = {
   "SPARTA BRAGA": 401,
   "FANTAMACHO": 406
  },
- "noteBudget": "Budget = 400 crediti base più il residuo non speso della stagione precedente, diverso per squadra. I residui sono quelli riferiti da Polibio l'11 settembre 2026 e differiscono da quelli a fine asta 2025-26 presenti nel foglio storico (il mercato di riparazione li ha modificati). Da confermare prima del primo acquisto."
+ "noteBudget": "Budget = 400 crediti base piu' il residuo non speso della stagione precedente, diverso per squadra. Residui riferiti da Polibio l'11 settembre 2026; differiscono da quelli a fine asta 2025-26 nel foglio storico perche' il mercato di riparazione li ha modificati. Da confermare prima del primo acquisto."
 };
 if (typeof window !== "undefined") window.STORICO_MANAGER_1996 = STORICO_MANAGER_1996;
 if (typeof module !== "undefined" && module.exports) module.exports = STORICO_MANAGER_1996;
