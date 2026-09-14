@@ -1710,10 +1710,14 @@
 
             // Chipleader = chi ha piu' budget residuo (a parita', chi ha piu'
             // slot ancora liberi, perche' quel budget deve coprirne di piu').
+            // Le squadre a rosa completa sono escluse: non sono piu' in
+            // corsa, quindi non ha senso segnalarle come "da temere" pur
+            // avendo ancora credito inutilizzato.
             let leader = null, maxBudget = -1;
             ordine.forEach(i => {
                 const t = teams[i];
-                if (t && t.budget > maxBudget) { maxBudget = t.budget; leader = i; }
+                if (!t || t.players.length >= PLAYERS_PER_SQUAD) return;
+                if (t.budget > maxBudget) { maxBudget = t.budget; leader = i; }
             });
 
             let html = '';
