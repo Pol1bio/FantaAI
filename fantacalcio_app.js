@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.46 - APP LOGIC
+        // FANTACALCIO v3.9.9.47 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -28,6 +28,10 @@
                 budgetPerSquadra: null,      // uguale per tutte
                 regolaTurno: 'chiamante',
                 modificatoreDifesa: true,
+                // Niente riconferme a Fantalissandria: tutti i giocatori
+                // passano dall'asta, quindi ogni prezzo e' un prezzo di
+                // mercato e va letto come tale.
+                riconferme: null,
                 storico: 'STORICO_MANAGER'
             },
             lega1996: {
@@ -44,6 +48,14 @@
                 },
                 regolaTurno: 'acquirente',
                 modificatoreDifesa: false,
+                // Ogni squadra puo' riconfermare fino a 3 giocatori
+                // dell'anno prima, al massimo uno per ruolo (quindi un
+                // reparto resta sempre scoperto). Si registrano PRIMA
+                // dell'asta, al prezzo pagato la stagione scorsa: sono
+                // prezzi fuori mercato e vanno marcati come tali, altrimenti
+                // un A+ a 3 crediti sembra un'anomalia d'asta e sballa le
+                // letture sull'inflazione dei reparti.
+                riconferme: { max: 3, maxPerRuolo: 1 },
                 storico: 'STORICO_MANAGER_1996'
             }
         };
@@ -97,6 +109,11 @@
             const btn = document.getElementById('btnManagerReali');
             const st = storicoLega();
             if (btn) btn.style.display = (st && st.partecipanti202627) ? 'block' : 'none';
+
+            // Il riquadro riconferme esiste solo dove la lega le prevede.
+            const rb = document.getElementById('riconfermeBox');
+            if (rb) rb.style.display = L.riconferme ? 'block' : 'none';
+            aggiornaRiepilogoRiconferme();
 
             if (azzera) {
                 teams = {};
@@ -277,7 +294,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.46';
+        const APP_VERSION = '3.9.9.47';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -1022,6 +1039,230 @@
                 setupAutocomplete();
             }
         });
+
+        /* ================================================================
+         * RICONFERME (solo leghe che le prevedono — oggi la 1996)
+         *
+         * Regola: ogni squadra puo' trattenere fino a 3 giocatori della
+         * stagione precedente, al massimo uno per ruolo, al prezzo pagato
+         * allora. In pratica si riconferma chi era costato poco e ha reso
+         * molto, quindi i prezzi sono sistematicamente sotto mercato.
+         *
+         * Perche' vanno marcati: senza un flag, un A+ comprato a 3 crediti
+         * entra nelle statistiche come se fosse il risultato di un'asta, e
+         * falsa due letture che l'agente fa di continuo — l'inflazione per
+         * reparto (mercatoPerReparto) e il giudizio sui prezzi altrui. Con
+         * riconferma:true quei giocatori restano in rosa e nel budget, ma
+         * escono dal campione dei prezzi di mercato.
+         * ================================================================ */
+
+        function riconfermeConfig() {
+            const L = lega();
+            return (L && L.riconferme) || null;
+        }
+
+        /** Le riconferme gia' registrate, per numero di squadra. */
+        function riconfermeDi(teamNum) {
+            const t = teams[teamNum];
+            if (!t) return [];
+            return t.players.filter(p => p.riconferma);
+        }
+
+        function aggiornaRiepilogoRiconferme() {
+            const box = document.getElementById('riconfermeRiepilogo');
+            if (!box) return;
+            const cfg = riconfermeConfig();
+            if (!cfg) { box.textContent = ''; return; }
+            let n = 0;
+            for (let i = 1; i <= 8; i++) n += riconfermeDi(i).length;
+            box.textContent = n === 0
+                ? 'Nessuna riconferma registrata.'
+                : n + ' riconferme registrate su ' + (cfg.max * 8) + ' possibili.';
+        }
+
+        function apriFormRiconferme() {
+            const cfg = riconfermeConfig();
+            if (!cfg) {
+                showMessage('Questa lega non prevede riconferme.', 'error');
+                return;
+            }
+
+            // Autocompletamento: datalist con tutti i nomi del listone.
+            const dl = document.getElementById('listaGiocatoriRiconferme');
+            if (dl && !dl.childElementCount && typeof PLAYERS_DATA !== 'undefined') {
+                dl.innerHTML = PLAYERS_DATA
+                    .map(p => `<option value="${escapeAttr(p.name)}">${p.role} · ${escapeHtml(p.team)}</option>`)
+                    .join('');
+            }
+
+            const reg = document.getElementById('riconfermeRegole');
+            if (reg) {
+                reg.textContent =
+                    `Fino a ${cfg.max} giocatori per squadra, massimo ${cfg.maxPerRuolo} per ruolo, ` +
+                    `al prezzo pagato la scorsa stagione. Occupano slot di rosa e scalano il budget, ` +
+                    `ma non contano come prezzi d'asta. Lascia vuoto per non riconfermare.`;
+            }
+
+            // Una riga per squadra x max riconferme, precompilata con quelle
+            // gia' registrate cosi' il form e' anche la schermata di modifica.
+            let html = '';
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+                const gia = riconfermeDi(i);
+                html += `<div style="margin-bottom:12px;padding:10px;background:#1e293b;border-radius:6px;">
+                    <div style="font-weight:600;color:#60a5fa;margin-bottom:8px;">${escapeHtml(t.name)}</div>`;
+                for (let s = 0; s < cfg.max; s++) {
+                    const p = gia[s];
+                    html += `<div style="display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:6px;">
+                        <input type="text" list="listaGiocatoriRiconferme"
+                               id="ric_nome_${i}_${s}" placeholder="Giocatore ${s + 1} (vuoto = nessuno)"
+                               value="${p ? escapeAttr(p.name) : ''}"
+                               style="padding:7px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;">
+                        <input type="number" min="1" id="ric_prezzo_${i}_${s}" placeholder="Prezzo"
+                               value="${p ? p.price : ''}"
+                               style="padding:7px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;">
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+            document.getElementById('riconfermeForm').innerHTML = html;
+            document.getElementById('riconfermeErrori').textContent = '';
+            document.getElementById('riconfermeModal').style.display = 'block';
+        }
+        window.apriFormRiconferme = apriFormRiconferme;
+
+        function chiudiFormRiconferme() {
+            const m = document.getElementById('riconfermeModal');
+            if (m) m.style.display = 'none';
+        }
+        window.chiudiFormRiconferme = chiudiFormRiconferme;
+
+        /**
+         * Valida TUTTO prima di scrivere qualsiasi cosa.
+         *
+         * Il salvataggio e' idempotente: prima si rimuovono le riconferme
+         * gia' registrate (restituendo il budget), poi si riscrive l'insieme
+         * dichiarato nel form. Cosi' riaprire il form e correggere un prezzo
+         * non crea doppioni ne' lascia budget scalato due volte. Proprio per
+         * questo la validazione deve passare per intero prima di toccare le
+         * rose: a meta' strada le rose sarebbero in uno stato incoerente.
+         */
+        function salvaRiconferme() {
+            const cfg = riconfermeConfig();
+            if (!cfg) return;
+
+            const errori = [];
+            const proposte = {};   // teamNum -> [{player, price}]
+            const presi = new Map(); // playerId -> nome squadra (per i doppioni)
+
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+                proposte[i] = [];
+                const perRuolo = {};
+
+                for (let s = 0; s < cfg.max; s++) {
+                    const nome = (document.getElementById(`ric_nome_${i}_${s}`).value || '').trim();
+                    const prezzoRaw = (document.getElementById(`ric_prezzo_${i}_${s}`).value || '').trim();
+                    if (!nome && !prezzoRaw) continue;
+
+                    if (!nome) { errori.push(`${t.name}: prezzo indicato senza giocatore.`); continue; }
+                    if (!prezzoRaw) { errori.push(`${t.name}: manca il prezzo di ${nome}.`); continue; }
+
+                    const prezzo = parseInt(prezzoRaw, 10);
+                    if (!(prezzo >= 1)) { errori.push(`${t.name}: prezzo non valido per ${nome}.`); continue; }
+
+                    const pd = (typeof PLAYERS_DATA !== 'undefined')
+                        ? PLAYERS_DATA.find(x => x.name.toUpperCase() === nome.toUpperCase())
+                        : null;
+                    if (!pd) { errori.push(`${t.name}: "${nome}" non e' nel listone.`); continue; }
+
+                    // Uno per ruolo
+                    if (perRuolo[pd.role]) {
+                        errori.push(`${t.name}: due riconferme nello stesso ruolo (${pd.role}) — ` +
+                                    `${perRuolo[pd.role]} e ${pd.name}. Ne e' ammessa ${cfg.maxPerRuolo}.`);
+                        continue;
+                    }
+                    perRuolo[pd.role] = pd.name;
+
+                    // Stesso giocatore riconfermato da due squadre
+                    if (presi.has(pd.id)) {
+                        errori.push(`${pd.name}: riconfermato sia da ${presi.get(pd.id)} che da ${t.name}.`);
+                        continue;
+                    }
+                    presi.set(pd.id, t.name);
+
+                    proposte[i].push({ pd, prezzo });
+                }
+
+                // Budget: si confronta col budget iniziale della squadra, non
+                // col residuo, perche' le vecchie riconferme stanno per essere
+                // rimborsate e quindi non devono pesare due volte.
+                const rimborso = riconfermeDi(i).reduce((s, p) => s + p.price, 0);
+                const disponibile = t.budget + rimborso;
+                const costo = proposte[i].reduce((s, x) => s + x.prezzo, 0);
+                if (costo > disponibile) {
+                    errori.push(`${t.name}: le riconferme costano ${costo} ma il budget disponibile e' ${disponibile}.`);
+                }
+
+                // Il giocatore non deve essere gia' in rosa per acquisto d'asta
+                proposte[i].forEach(x => {
+                    const dup = t.players.find(p => p.id === x.pd.id && !p.riconferma);
+                    if (dup) errori.push(`${t.name}: ${x.pd.name} risulta gia' acquistato all'asta.`);
+                });
+            }
+
+            const box = document.getElementById('riconfermeErrori');
+            if (errori.length) {
+                box.textContent = errori.join('\n');
+                return;
+            }
+            box.textContent = '';
+
+            // Da qui in poi si scrive: la validazione e' passata per tutte le squadre.
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+
+                // 1) rimuovi le vecchie riconferme e restituisci il budget
+                const vecchie = riconfermeDi(i);
+                const rimborso = vecchie.reduce((s, p) => s + p.price, 0);
+                t.players = t.players.filter(p => !p.riconferma);
+                t.spent -= rimborso;
+                t.budget += rimborso;
+
+                // 2) scrivi quelle nuove
+                (proposte[i] || []).forEach(x => {
+                    t.players.push({
+                        id: x.pd.id,
+                        name: x.pd.name,
+                        role: x.pd.role,
+                        squad: x.pd.squad,
+                        team: x.pd.team,
+                        price: x.prezzo,
+                        riconferma: true
+                    });
+                    t.spent += x.prezzo;
+                    t.budget -= x.prezzo;
+                });
+            }
+
+            saveData();
+            chiudiFormRiconferme();
+            aggiornaRiepilogoRiconferme();
+            initTeamButtons();
+            renderTeamsOverview();
+            if (typeof renderLeagueDashboard === 'function') renderLeagueDashboard();
+            updateDisplay();
+            filterAvailable();
+            aggiornaTurnoChiamata();
+
+            let n = 0;
+            for (let i = 1; i <= 8; i++) n += riconfermeDi(i).length;
+            showMessage(`🔒 ${n} riconferme registrate.`, 'success');
+        }
+        window.salvaRiconferme = salvaRiconferme;
 
         function getRolesInDeficit() {
             // Conta quanti giocatori per ruolo sono stati comprati in TUTTE le squadre
@@ -1821,8 +2062,15 @@
                             const playerPct = ((p.price / budgetInizialeDi(team)) * 100).toFixed(1);
                             const teamAbbr = getTeamAbbr(p.team);
                             const tier = tierById[p.id] || '-';
+                            // Le riconferme si distinguono a colpo d'occhio:
+                            // il loro prezzo non e' un prezzo d'asta e non va
+                            // usato per farsi un'idea del mercato.
+                            const ric = p.riconferma ? '🔒 ' : '';
+                            const titolo = p.riconferma
+                                ? p.name + ' — riconfermato, prezzo fuori asta'
+                                : p.name;
                             playersHtml += `<div class="team-player-row">
-                                <span class="tp-name" title="${escapeHtml(p.name)}">${p.name}</span>
+                                <span class="tp-name" title="${escapeHtml(titolo)}">${ric}${p.name}</span>
                                 <span class="tp-abbr">${teamAbbr}</span>
                                 <span class="tp-tier tp-tier-${escapeHtml(tier)}">${tier}</span>
                                 <span class="tp-price">${p.price}M<span class="tp-pct">${playerPct}%</span></span>

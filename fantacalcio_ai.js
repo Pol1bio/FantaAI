@@ -930,6 +930,13 @@
           const r = normRole(g.role);
           const l = listino.get(g.id);
           if (!r || l == null) return;
+          // Le riconferme (Lega 1996) non sono passate dall'asta: sono al
+          // prezzo della stagione scorsa, di norma molto sotto mercato
+          // perche' si riconferma chi era costato poco e ha reso molto.
+          // Contarle qui abbasserebbe artificialmente il rapporto
+          // pagato/listino e farebbe leggere come "reparto regalato" un
+          // mercato che invece non e' ancora partito.
+          if (g.riconferma) return;
           perRuolo[r].pagato += Number(g.price) || 0;
           perRuolo[r].listino += l;
           perRuolo[r].n += 1;
@@ -950,7 +957,11 @@
       Object.keys(allTeams || {}).forEach((k) => {
         if (String(k) === String(mineKey)) return;
         const t = allTeams[k];
-        const mancanti = 25 - (((t && t.players) || []).length);
+        // Rosa da 25 a Fantalissandria, da 24 nella 1996: leggere squadSize
+        // invece del 25 cablato che c'era prima, altrimenti nella 1996 ogni
+        // squadra risulta avere uno slot mancante in piu' e il credito per
+        // slot esce sottostimato.
+        const mancanti = this.squadSize - (((t && t.players) || []).length);
         if (mancanti <= 0) return;
         liquidi.push({
           squadra: (t && t.name) || k,
