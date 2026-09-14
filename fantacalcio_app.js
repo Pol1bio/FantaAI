@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.47 - APP LOGIC
+        // FANTACALCIO v3.9.9.48 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -294,7 +294,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.47';
+        const APP_VERSION = '3.9.9.48';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -1056,8 +1056,13 @@
          * escono dal campione dei prezzi di mercato.
          * ================================================================ */
 
-        function riconfermeConfig() {
-            const L = lega();
+        // Reparto mostrato nel modulo: normalmente la fase in corso, ma si
+        // puo' forzare per rivedere un reparto gia' chiuso.
+        let ruoloRiconfermeScelto = null;
+        // Sbloccato da forzaRiconferme() per correggere a reparto avviato.
+        let riconfermeSbloccate = false;
+
+        function riconfermeConfig() {            const L = lega();
             return (L && L.riconferme) || null;
         }
 
@@ -1075,56 +1080,124 @@
             if (!cfg) { box.textContent = ''; return; }
             let n = 0;
             for (let i = 1; i <= 8; i++) n += riconfermeDi(i).length;
-            box.textContent = n === 0
-                ? 'Nessuna riconferma registrata.'
-                : n + ' riconferme registrate su ' + (cfg.max * 8) + ' possibili.';
+            const role = calcolaFaseCorrente();
+            const stato = role
+                ? (astaAvviataPerRuolo(role)
+                    ? `${role}: asta avviata, riconferme chiuse`
+                    : `${role}: riconferme aperte`)
+                : 'asta completata';
+            box.textContent = `${n} riconferme registrate — ${stato}.`;
         }
 
-        function apriFormRiconferme() {
+        /**
+         * Il reparto di cui si stanno facendo le riconferme.
+         *
+         * Le riconferme non sono un blocco unico prima dell'asta: si fanno
+         * reparto per reparto, subito prima della fase corrispondente.
+         * Prima i portieri riconfermati, poi l'asta dei portieri; poi i
+         * difensori riconfermati, poi l'asta dei difensori; e cosi' via.
+         * Quindi il reparto da mostrare e' sempre la fase corrente.
+         */
+        function ruoloRiconferme() {
+            return ruoloRiconfermeScelto || calcolaFaseCorrente();
+        }
+
+        /**
+         * Vero se l'asta di quel reparto e' gia' cominciata, cioe' se
+         * esiste almeno un acquisto NON da riconferma in quel ruolo.
+         * Le riconferme di un reparto vanno chiuse prima che parta la sua
+         * asta: dopo, riaprirle sposterebbe slot e budget a giochi fatti.
+         */
+        function astaAvviataPerRuolo(role) {
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+                if (t.players.some(p => p.role === role && !p.riconferma)) return true;
+            }
+            return false;
+        }
+
+        function apriFormRiconferme(ruoloForzato) {
             const cfg = riconfermeConfig();
             if (!cfg) {
                 showMessage('Questa lega non prevede riconferme.', 'error');
                 return;
             }
 
-            // Autocompletamento: datalist con tutti i nomi del listone.
+            ruoloRiconfermeScelto = ruoloForzato || null;
+            const role = ruoloRiconferme();
+            if (!role) {
+                showMessage('Asta completata: non ci sono altri reparti da riconfermare.', 'error');
+                return;
+            }
+
+            // Autocompletamento ristretto al reparto in corso: proporre
+            // attaccanti mentre si riconfermano i portieri servirebbe solo
+            // a sbagliare.
             const dl = document.getElementById('listaGiocatoriRiconferme');
-            if (dl && !dl.childElementCount && typeof PLAYERS_DATA !== 'undefined') {
+            if (dl && typeof PLAYERS_DATA !== 'undefined') {
                 dl.innerHTML = PLAYERS_DATA
-                    .map(p => `<option value="${escapeAttr(p.name)}">${p.role} · ${escapeHtml(p.team)}</option>`)
+                    .filter(p => p.role === role)
+                    .map(p => `<option value="${escapeAttr(p.name)}">${escapeHtml(p.team)}</option>`)
                     .join('');
             }
 
+            const nomiRuolo = { POR: 'PORTIERI', DIF: 'DIFENSORI', CEN: 'CENTROCAMPISTI', ATT: 'ATTACCANTI' };
+            const avviata = astaAvviataPerRuolo(role);
+
             const reg = document.getElementById('riconfermeRegole');
             if (reg) {
-                reg.textContent =
-                    `Fino a ${cfg.max} giocatori per squadra, massimo ${cfg.maxPerRuolo} per ruolo, ` +
-                    `al prezzo pagato la scorsa stagione. Occupano slot di rosa e scalano il budget, ` +
-                    `ma non contano come prezzi d'asta. Lascia vuoto per non riconfermare.`;
+                let txt = `Reparto <b style="color:#60a5fa;">${nomiRuolo[role]}</b>. ` +
+                    `Una riconferma per squadra in questo reparto, ` +
+                    `massimo ${cfg.max} in tutta l'asta. ` +
+                    `Il giocatore occupa uno slot del reparto e scala il budget, ` +
+                    `ma il suo prezzo non e' un prezzo d'asta.`;
+                if (avviata) {
+                    txt += `<br><b style="color:#f87171;">L'asta di questo reparto e' gia' cominciata.</b> ` +
+                        `Le riconferme andavano chiuse prima. Per correggere comunque: ` +
+                        `<code>forzaRiconferme()</code> da console, poi riapri il modulo.`;
+                }
+                // Reparti gia' passati, per rivederli se serve una correzione
+                const altri = ROLE_ORDER.filter(r => r !== role)
+                    .map(r => `<a href="#" onclick="apriFormRiconferme('${r}');return false;" style="color:#94a3b8;">${r}</a>`)
+                    .join(' · ');
+                txt += `<br><span style="font-size:11px;">Altri reparti: ${altri}</span>`;
+                reg.innerHTML = txt;
             }
 
-            // Una riga per squadra x max riconferme, precompilata con quelle
-            // gia' registrate cosi' il form e' anche la schermata di modifica.
             let html = '';
             for (let i = 1; i <= 8; i++) {
                 const t = teams[i];
                 if (!t) continue;
-                const gia = riconfermeDi(i);
-                html += `<div style="margin-bottom:12px;padding:10px;background:#1e293b;border-radius:6px;">
-                    <div style="font-weight:600;color:#60a5fa;margin-bottom:8px;">${escapeHtml(t.name)}</div>`;
-                for (let s = 0; s < cfg.max; s++) {
-                    const p = gia[s];
-                    html += `<div style="display:grid;grid-template-columns:1fr 90px;gap:8px;margin-bottom:6px;">
+
+                const gia = t.players.find(p => p.riconferma && p.role === role);
+                const usateAltrove = t.players.filter(p => p.riconferma && p.role !== role).length;
+                const esaurite = usateAltrove >= cfg.max;
+
+                // Slot del reparto gia' occupati da acquisti d'asta: se il
+                // reparto e' pieno non c'e' posto per una riconferma.
+                const inRuolo = t.players.filter(p => p.role === role && !(gia && p.id === gia.id)).length;
+                const pieno = inRuolo >= ROLE_LIMITS[role];
+
+                let nota = '';
+                if (esaurite) nota = `<span style="color:#f59e0b;font-size:11px;"> — ha gia' usato tutte e ${cfg.max} le riconferme</span>`;
+                else if (pieno) nota = `<span style="color:#f59e0b;font-size:11px;"> — reparto gia' completo</span>`;
+                else nota = `<span style="color:#64748b;font-size:11px;"> — ${cfg.max - usateAltrove} riconferme ancora disponibili</span>`;
+
+                const bloccato = (esaurite || pieno) && !gia;
+
+                html += `<div style="margin-bottom:10px;padding:10px;background:#1e293b;border-radius:6px;">
+                    <div style="font-weight:600;color:#60a5fa;margin-bottom:8px;">${escapeHtml(t.name)}${nota}</div>
+                    <div style="display:grid;grid-template-columns:1fr 90px;gap:8px;">
                         <input type="text" list="listaGiocatoriRiconferme"
-                               id="ric_nome_${i}_${s}" placeholder="Giocatore ${s + 1} (vuoto = nessuno)"
-                               value="${p ? escapeAttr(p.name) : ''}"
+                               id="ric_nome_${i}" placeholder="${bloccato ? 'non disponibile' : 'Giocatore (vuoto = nessuna)'}"
+                               value="${gia ? escapeAttr(gia.name) : ''}" ${bloccato ? 'disabled' : ''}
                                style="padding:7px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;">
-                        <input type="number" min="1" id="ric_prezzo_${i}_${s}" placeholder="Prezzo"
-                               value="${p ? p.price : ''}"
+                        <input type="number" min="1" id="ric_prezzo_${i}" placeholder="Prezzo"
+                               value="${gia ? gia.price : ''}" ${bloccato ? 'disabled' : ''}
                                style="padding:7px;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#e2e8f0;font-size:13px;">
-                    </div>`;
-                }
-                html += `</div>`;
+                    </div>
+                </div>`;
             }
             document.getElementById('riconfermeForm').innerHTML = html;
             document.getElementById('riconfermeErrori').textContent = '';
@@ -1135,119 +1208,152 @@
         function chiudiFormRiconferme() {
             const m = document.getElementById('riconfermeModal');
             if (m) m.style.display = 'none';
+            ruoloRiconfermeScelto = null;
         }
         window.chiudiFormRiconferme = chiudiFormRiconferme;
 
         /**
-         * Valida TUTTO prima di scrivere qualsiasi cosa.
+         * Sblocca le riconferme di un reparto la cui asta e' gia' partita.
+         * Stessa logica di forzaFase(): non e' una scorciatoia, e' la via
+         * d'uscita per correggere un errore a giochi avviati.
+         */
+        function forzaRiconferme() {
+            riconfermeSbloccate = true;
+            console.log('Riconferme sbloccate: il prossimo salvataggio passa anche a reparto avviato.');
+            return true;
+        }
+        window.forzaRiconferme = forzaRiconferme;
+
+        /**
+         * Salva le riconferme del SOLO reparto mostrato.
          *
-         * Il salvataggio e' idempotente: prima si rimuovono le riconferme
-         * gia' registrate (restituendo il budget), poi si riscrive l'insieme
-         * dichiarato nel form. Cosi' riaprire il form e correggere un prezzo
-         * non crea doppioni ne' lascia budget scalato due volte. Proprio per
-         * questo la validazione deve passare per intero prima di toccare le
-         * rose: a meta' strada le rose sarebbero in uno stato incoerente.
+         * Valida tutte e otto le squadre prima di scrivere qualsiasi cosa:
+         * a meta' strada le rose resterebbero incoerenti. Le riconferme
+         * degli altri reparti non vengono toccate.
          */
         function salvaRiconferme() {
             const cfg = riconfermeConfig();
             if (!cfg) return;
-
-            const errori = [];
-            const proposte = {};   // teamNum -> [{player, price}]
-            const presi = new Map(); // playerId -> nome squadra (per i doppioni)
-
-            for (let i = 1; i <= 8; i++) {
-                const t = teams[i];
-                if (!t) continue;
-                proposte[i] = [];
-                const perRuolo = {};
-
-                for (let s = 0; s < cfg.max; s++) {
-                    const nome = (document.getElementById(`ric_nome_${i}_${s}`).value || '').trim();
-                    const prezzoRaw = (document.getElementById(`ric_prezzo_${i}_${s}`).value || '').trim();
-                    if (!nome && !prezzoRaw) continue;
-
-                    if (!nome) { errori.push(`${t.name}: prezzo indicato senza giocatore.`); continue; }
-                    if (!prezzoRaw) { errori.push(`${t.name}: manca il prezzo di ${nome}.`); continue; }
-
-                    const prezzo = parseInt(prezzoRaw, 10);
-                    if (!(prezzo >= 1)) { errori.push(`${t.name}: prezzo non valido per ${nome}.`); continue; }
-
-                    const pd = (typeof PLAYERS_DATA !== 'undefined')
-                        ? PLAYERS_DATA.find(x => x.name.toUpperCase() === nome.toUpperCase())
-                        : null;
-                    if (!pd) { errori.push(`${t.name}: "${nome}" non e' nel listone.`); continue; }
-
-                    // Uno per ruolo
-                    if (perRuolo[pd.role]) {
-                        errori.push(`${t.name}: due riconferme nello stesso ruolo (${pd.role}) — ` +
-                                    `${perRuolo[pd.role]} e ${pd.name}. Ne e' ammessa ${cfg.maxPerRuolo}.`);
-                        continue;
-                    }
-                    perRuolo[pd.role] = pd.name;
-
-                    // Stesso giocatore riconfermato da due squadre
-                    if (presi.has(pd.id)) {
-                        errori.push(`${pd.name}: riconfermato sia da ${presi.get(pd.id)} che da ${t.name}.`);
-                        continue;
-                    }
-                    presi.set(pd.id, t.name);
-
-                    proposte[i].push({ pd, prezzo });
-                }
-
-                // Budget: si confronta col budget iniziale della squadra, non
-                // col residuo, perche' le vecchie riconferme stanno per essere
-                // rimborsate e quindi non devono pesare due volte.
-                const rimborso = riconfermeDi(i).reduce((s, p) => s + p.price, 0);
-                const disponibile = t.budget + rimborso;
-                const costo = proposte[i].reduce((s, x) => s + x.prezzo, 0);
-                if (costo > disponibile) {
-                    errori.push(`${t.name}: le riconferme costano ${costo} ma il budget disponibile e' ${disponibile}.`);
-                }
-
-                // Il giocatore non deve essere gia' in rosa per acquisto d'asta
-                proposte[i].forEach(x => {
-                    const dup = t.players.find(p => p.id === x.pd.id && !p.riconferma);
-                    if (dup) errori.push(`${t.name}: ${x.pd.name} risulta gia' acquistato all'asta.`);
-                });
-            }
+            const role = ruoloRiconferme();
+            if (!role) return;
 
             const box = document.getElementById('riconfermeErrori');
-            if (errori.length) {
-                box.textContent = errori.join('\n');
+
+            if (astaAvviataPerRuolo(role) && !riconfermeSbloccate) {
+                box.textContent =
+                    `L'asta dei ${role} e' gia' cominciata: le riconferme di questo reparto sono chiuse.\n` +
+                    `Se devi correggere un errore: forzaRiconferme() da console, poi salva di nuovo.`;
                 return;
             }
-            box.textContent = '';
 
-            // Da qui in poi si scrive: la validazione e' passata per tutte le squadre.
+            const errori = [];
+            const proposte = {};      // teamNum -> {pd, prezzo} | null
+            const presi = new Map();  // playerId -> squadra
+
+            // Giocatori gia' in mano a qualcuno (asta o riconferme di altri
+            // reparti): non possono essere riconfermati da nessun altro.
             for (let i = 1; i <= 8; i++) {
                 const t = teams[i];
                 if (!t) continue;
-
-                // 1) rimuovi le vecchie riconferme e restituisci il budget
-                const vecchie = riconfermeDi(i);
-                const rimborso = vecchie.reduce((s, p) => s + p.price, 0);
-                t.players = t.players.filter(p => !p.riconferma);
-                t.spent -= rimborso;
-                t.budget += rimborso;
-
-                // 2) scrivi quelle nuove
-                (proposte[i] || []).forEach(x => {
-                    t.players.push({
-                        id: x.pd.id,
-                        name: x.pd.name,
-                        role: x.pd.role,
-                        squad: x.pd.squad,
-                        team: x.pd.team,
-                        price: x.prezzo,
-                        riconferma: true
-                    });
-                    t.spent += x.prezzo;
-                    t.budget -= x.prezzo;
+                t.players.forEach(p => {
+                    if (p.riconferma && p.role === role) return; // sta per essere riscritta
+                    presi.set(p.id, t.name);
                 });
             }
 
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+                proposte[i] = null;
+
+                const elNome = document.getElementById(`ric_nome_${i}`);
+                const elPrezzo = document.getElementById(`ric_prezzo_${i}`);
+                if (!elNome || elNome.disabled) continue;
+
+                const nome = (elNome.value || '').trim();
+                const prezzoRaw = (elPrezzo.value || '').trim();
+                if (!nome && !prezzoRaw) continue;
+
+                if (!nome) { errori.push(`${t.name}: prezzo indicato senza giocatore.`); continue; }
+                if (!prezzoRaw) { errori.push(`${t.name}: manca il prezzo di ${nome}.`); continue; }
+
+                const prezzo = parseInt(prezzoRaw, 10);
+                if (!(prezzo >= 1)) { errori.push(`${t.name}: prezzo non valido per ${nome}.`); continue; }
+
+                const pd = (typeof PLAYERS_DATA !== 'undefined')
+                    ? PLAYERS_DATA.find(x => x.name.toUpperCase() === nome.toUpperCase())
+                    : null;
+                if (!pd) { errori.push(`${t.name}: "${nome}" non e' nel listone.`); continue; }
+
+                if (pd.role !== role) {
+                    errori.push(`${t.name}: ${pd.name} e' ${pd.role}, ma si stanno riconfermando i ${role}.`);
+                    continue;
+                }
+
+                if (presi.has(pd.id)) {
+                    errori.push(`${t.name}: ${pd.name} e' gia' in rosa a ${presi.get(pd.id)}.`);
+                    continue;
+                }
+                presi.set(pd.id, t.name);
+
+                // Tetto complessivo di riconferme, contando gli altri reparti
+                const usateAltrove = t.players.filter(p => p.riconferma && p.role !== role).length;
+                if (usateAltrove >= cfg.max) {
+                    errori.push(`${t.name}: ha gia' usato tutte e ${cfg.max} le riconferme negli altri reparti.`);
+                    continue;
+                }
+
+                // Capienza del reparto, contando anche gli acquisti d'asta.
+                // La vecchia riconferma di questo reparto non conta: sta per
+                // essere sostituita.
+                const vecchia = t.players.find(p => p.riconferma && p.role === role);
+                const occupati = t.players.filter(
+                    p => p.role === role && !(vecchia && p.id === vecchia.id)
+                ).length;
+                if (occupati + 1 > ROLE_LIMITS[role]) {
+                    errori.push(`${t.name}: i ${role} sono gia' ${occupati}/${ROLE_LIMITS[role]}, non c'e' spazio per una riconferma.`);
+                    continue;
+                }
+
+                // Budget: la vecchia riconferma del reparto viene rimborsata
+                const rimborso = vecchia ? vecchia.price : 0;
+                if (prezzo > t.budget + rimborso) {
+                    errori.push(`${t.name}: ${pd.name} costa ${prezzo} ma il budget disponibile e' ${t.budget + rimborso}.`);
+                    continue;
+                }
+
+                proposte[i] = { pd, prezzo };
+            }
+
+            if (errori.length) { box.textContent = errori.join('\n'); return; }
+            box.textContent = '';
+
+            for (let i = 1; i <= 8; i++) {
+                const t = teams[i];
+                if (!t) continue;
+                const elNome = document.getElementById(`ric_nome_${i}`);
+                if (!elNome || elNome.disabled) continue;
+
+                // Rimuovi la riconferma precedente di QUESTO reparto
+                const vecchia = t.players.find(p => p.riconferma && p.role === role);
+                if (vecchia) {
+                    t.players = t.players.filter(p => !(p.riconferma && p.role === role));
+                    t.spent -= vecchia.price;
+                    t.budget += vecchia.price;
+                }
+
+                const x = proposte[i];
+                if (!x) continue;
+                t.players.push({
+                    id: x.pd.id, name: x.pd.name, role: x.pd.role,
+                    squad: x.pd.squad, team: x.pd.team,
+                    price: x.prezzo, riconferma: true
+                });
+                t.spent += x.prezzo;
+                t.budget -= x.prezzo;
+            }
+
+            riconfermeSbloccate = false;
             saveData();
             chiudiFormRiconferme();
             aggiornaRiepilogoRiconferme();
@@ -1258,9 +1364,8 @@
             filterAvailable();
             aggiornaTurnoChiamata();
 
-            let n = 0;
-            for (let i = 1; i <= 8; i++) n += riconfermeDi(i).length;
-            showMessage(`🔒 ${n} riconferme registrate.`, 'success');
+            const n = Object.values(proposte).filter(Boolean).length;
+            showMessage(`🔒 ${role}: ${n} riconferme registrate.`, 'success');
         }
         window.salvaRiconferme = salvaRiconferme;
 
