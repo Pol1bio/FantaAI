@@ -1026,7 +1026,14 @@
         function getRolesInDeficit() {
             // Conta quanti giocatori per ruolo sono stati comprati in TUTTE le squadre
             const roleCounts = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
-            const roleMaxes = { POR: 3, DIF: 8, CEN: 8, ATT: 6 };
+            // Prima qui c'era { POR: 3, DIF: 8, CEN: 8, ATT: 6 } cablato:
+            // andava bene solo per Fantalissandria. In Lega 1996 i DIF per
+            // rosa sono 7, non 8 (24 giocatori totali, non 25) — con il
+            // valore fisso il deficit DIF non si azzerava mai (contava fino
+            // a 8*8=64 invece di 8*7=56), quindi i difensori restavano
+            // segnalati "in deficit" anche a rose complete. Ora si legge
+            // ROLE_LIMITS, gia' impostato per lega corrente.
+            const roleMaxes = ROLE_LIMITS;
             
             // Somma i giocatori per ruolo in tutte le squadre
             for (let i = 1; i <= 8; i++) {
