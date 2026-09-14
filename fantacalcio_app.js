@@ -270,6 +270,7 @@
 
         // Filtro sui calciatori specialisti dei piazzati (campo setPieces)
         const activeSetPieces = new Set();
+        let filtroTitolareFisso = false; // P8 — filtro titolarità attesa >= 85%
 
         /**
          * Versione di questo file. Confrontata con quella dichiarata
@@ -1694,6 +1695,15 @@
             const ordine = base.slice().sort((a, b) => {
                 const ta = teams[a], tb = teams[b];
                 if (!ta || !tb) return 0;
+                // Chi ha completato la rosa va sempre in fondo, a
+                // prescindere dal budget residuo: non è più "in corsa" e
+                // il suo posto in classifica ricchezza non interessa più.
+                // Man mano che le altre squadre completano la rosa, questo
+                // le fa scendere una alla volta, ripristinando l'ordine di
+                // ricchezza fra le rimanenti.
+                const completaA = ta.players.length >= PLAYERS_PER_SQUAD;
+                const completaB = tb.players.length >= PLAYERS_PER_SQUAD;
+                if (completaA !== completaB) return completaA ? 1 : -1;
                 return (tb.budget - ta.budget) || (base.indexOf(a) - base.indexOf(b));
             });
             const fase = calcolaFaseCorrente();
@@ -2465,6 +2475,28 @@
         window.toggleSetPieceFilter = toggleSetPieceFilter;
 
         /**
+         * P8 — FILTRO TITOLARITA' FISSA (>= 85%).
+         *
+         * Soglia scelta deliberatamente a 85 e non 90: a 90% restano fuori
+         * parecchi titolari fissi con rotazioni fisiologiche (coppe, un
+         * turno di riposo ogni tanto), rischiando falsi negativi. 85%
+         * cattura i titolarissimi senza escludere chi salta una partita
+         * su dieci circa.
+         *
+         * Legge expectedTitolarita (stima per la stagione in corso, non
+         * lastThreeYearTitolarity che e' storica): se il campo manca sul
+         * giocatore, il filtro lo esclude per prudenza, non lo include.
+         */
+        const SOGLIA_TITOLARE_FISSO = 85;
+
+        function toggleTitolareFilter(button) {
+            filtroTitolareFisso = !filtroTitolareFisso;
+            button.classList.toggle('active', filtroTitolareFisso);
+            filterAvailable();
+        }
+        window.toggleTitolareFilter = toggleTitolareFilter;
+
+        /**
          * Vero se il giocatore e' uno specialista del tipo di piazzato chiesto.
          *
          * NON basta guardare setPieces: nel listone e' valorizzato solo su 39
@@ -2632,6 +2664,8 @@
                 if (teamFilter && p.team !== teamFilter) return false;
                 // P7 — specialisti dei piazzati (rigoristi / punizioni)
                 if (activeSetPieces.size > 0 && !haPiazzati(p, activeSetPieces)) return false;
+                // P8 — titolarità attesa >= 85%
+                if (filtroTitolareFisso && !(p.expectedTitolarita >= SOGLIA_TITOLARE_FISSO)) return false;
                 return true;
             });
 

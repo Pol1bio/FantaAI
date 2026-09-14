@@ -110,6 +110,13 @@
                 </div>
 
                 <div class="filter-item">
+                    <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Titolarità</label>
+                    <div class="filter-buttons">
+                        <button class="filter-btn" id="btnTitolareFisso" title="Titolarità attesa ≥ 85%" onclick="toggleTitolareFilter(this)">≥85%</button>
+                    </div>
+                </div>
+
+                <div class="filter-item">
                     <label style="font-size: 11px; color: #cbd5e1; text-transform: uppercase; display: block; margin-bottom: 8px;">Squadra</label>
                     <select id="filterTeam" onchange="filterAvailable()" style="width: 100%; padding: 8px; background: #1e293b; border: 1px solid #334155; border-radius: 4px; color: #e2e8f0; font-size: 13px;">
                         <option value="">Tutte</option>
