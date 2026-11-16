@@ -141,6 +141,8 @@ const PER_ROSA = dentro('PLAYERS_PER_SQUAD');
 const D = dentro('PLAYERS_DATA');
 
 // ---------------------------------------------------------------- preparazione
+// L'app riprende la sessione solo se la configurazione risulta completata.
+localStorage.setItem('fantacalcio_config_completed', 'true');
 dentro('teamOrder = [3,1,6,2,8,5,4,7]; orderConfirmed = true; turnoIndex = 0;');
 
 // Budget diversi per squadra, come nella Lega Fantacalcio 1996 (400 piu' il
@@ -242,6 +244,8 @@ console.log('Ordine di chiamata: ' + JSON.stringify(dentro('teamOrder')) + '\n')
 verificaInvarianti('stato iniziale');
 
 let ripetizioniIngiustificate = 0;
+let ricaricamenti = 0;
+let doppioniTentati = 0;
 let acquisti = 0;
 const MAX = 400; // guardia contro un ciclo che non termina
 
@@ -412,6 +416,45 @@ while (acquisti < MAX) {
     dentro('registerPurchase()');
     void primaUndo;
   }
+
+  // ---- 8: ricaricamento della pagina, a campione ----
+  // Si azzera tutto cio' che vive in memoria, come farebbe un ricaricamento,
+  // e si chiede all'app di riprendere da localStorage. Rose, ordine, turno,
+  // fase forzata e storico degli annullamenti devono tornare identici.
+  if (acquisti % 41 === 0) {
+    const primaR = JSON.stringify(dentro(
+      'JSON.parse(JSON.stringify({t: teams, o: teamOrder, c: orderConfirmed, i: turnoIndex, f: phaseOverride, u: undoStack}))'));
+    dentro('teams = {}; initializeTeams(); teamOrder = []; orderConfirmed = false; turnoIndex = 0; phaseOverride = null; undoStack = [];');
+    const ripreso = dentro('ripristinaSessione()');
+    const dopoR = JSON.stringify(dentro(
+      'JSON.parse(JSON.stringify({t: teams, o: teamOrder, c: orderConfirmed, i: turnoIndex, f: phaseOverride, u: undoStack}))'));
+    esigi(ripreso === true && primaR === dopoR, 'ricaricamento non riprende lo stato',
+      'dopo ripristinaSessione() lo stato differisce da quello prima del ricaricamento');
+    ricaricamenti++;
+  }
+
+  // ---- 9: lo stesso giocatore non puo' finire in due rose ----
+  if (acquisti % 47 === 0) {
+    const faseD = dentro('calcolaFaseCorrente()');
+    const tD = stato().teams;
+    let altra = null;
+    if (faseD === scelto.role) {
+      for (let i = 1; i <= 8; i++) {
+        if (i !== compratore && tD[i].budget >= 1 &&
+            tD[i].players.filter((p) => p.role === faseD).length < LIMITI[faseD]) { altra = i; break; }
+      }
+    }
+    if (altra) {
+      const primaD = JSON.stringify(stato());
+      dentro(`selectedPlayer = PLAYERS_DATA.find(p => p.id === ${JSON.stringify(scelto.id)});`);
+      dentro(`selectedTeam = ${altra};`);
+      document.getElementById('playerPrice').value = '1';
+      dentro('registerPurchase()');
+      esigi(primaD === JSON.stringify(stato()), 'doppione accettato',
+        `${scelto.name} gia' di Squadra ${compratore} registrato anche a Squadra ${altra}`);
+      doppioniTentati++;
+    }
+  }
 }
 
 // ---------------------------------------------------------------- esito
@@ -426,6 +469,8 @@ console.log(`Acquisti registrati: ${acquisti}`);
 console.log(`Giocatori inseriti a mano durante l'asta: ${manuali}`);
 console.log(`Rose complete (${PER_ROSA}/${PER_ROSA}): ${completi}/8`);
 console.log(`Invarianti controllate a ogni passo: 7`);
+console.log(`Ricaricamenti simulati e ripresi: ${ricaricamenti}`);
+console.log(`Doppioni tentati e respinti: ${doppioniTentati}`);
 console.log(`Chiamanti ripetuti senza motivo: ${ripetizioniIngiustificate}`);
 console.log('');
 

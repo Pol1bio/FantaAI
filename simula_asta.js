@@ -19,8 +19,8 @@ const fs = require('fs'), vm = require('vm');
 const ctx = { window: {}, module: { exports: {} }, console, Date,
               localStorage: { getItem() { return null; }, setItem() {} } };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync('/home/claude/players_data.js', 'utf8'), ctx);
-vm.runInContext(fs.readFileSync('/home/claude/fantacalcio_ai.js', 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(__dirname + '/players_data.js', 'utf8'), ctx);
+vm.runInContext(fs.readFileSync(__dirname + '/fantacalcio_ai.js', 'utf8'), ctx);
 
 const W = ctx.window, D = W.PLAYERS_DATA, A = W.AI_AGENT;
 const LIMITI = { POR: 3, DIF: 8, CEN: 8, ATT: 6 };

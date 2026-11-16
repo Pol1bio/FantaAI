@@ -149,7 +149,9 @@ Il fantavoto totale di squadra diventa gol a soglie:
 - poi **ogni 5 punti** → 1 gol in più
 
 Con 11 titolari da 6 si arriva esattamente a 66, cioè un gol.
-Sopra quella soglia ogni punto vale un quinto di gol, in modo lineare.
+Sopra quella soglia ogni punto vale **in media** un quinto di gol: la
+conversione è a scalini (un punto conta solo se fa superare una soglia), ma
+su una stagione intera gli scalini si compensano.
 
 ---
 
@@ -202,6 +204,12 @@ separate perché possano essere discusse o smentite.*
 - Poiché il modificatore usa il **voto** e non il fantavoto, difensori con
   molti bonus (gol, assist) sono sopravvalutati rispetto a quanto rendono
   qui, e difensori "grigi" ma con voto alto sono occasioni.
+- **La fantamedia del listone non contiene l'imbattibilità** *(aggiunto il 16
+  novembre 2026)*: ricalcolandola risulta voto meno gol subiti, più rigori
+  parati, meno cartellini, senza il +1. In questa lega quel +1 esiste, quindi
+  i portieri delle difese solide rendono più di quanto dica il listone:
+  stimando le porte inviolate dai gol subiti, Svilar ne ricava circa 15 punti
+  a stagione, Falcone circa 9. L'agente ora aggiunge questa stima da solo.
 - I portieri non si equivalgono — chi para in una difesa solida subisce meno
   gol e prende più punti — ma il divario di prezzo è sproporzionato al divario
   di resa: il terzo o quarto portiere per fantamedia costa un decimo del primo.
@@ -235,9 +243,30 @@ Quindi: **se sei sotto la media conviene rischiare**, concentrando i crediti
 su pochi fuoriclasse. **Se hai costruito la rosa più forte conviene livellare**,
 perché il vantaggio si difende con la costanza.
 
-Il modificatore, essendo un +1 fisso ogni giornata, vale circa **5 punti di
-classifica a stagione** — costando 10-25 crediti è l'affare migliore del
-regolamento.
+Il modificatore, quando scatta, vale +1: su una stagione sono **al massimo**
+circa 5 punti di classifica, e costa 10-25 crediti. Due precisazioni
+*(aggiunte il 16 novembre 2026, la stesura precedente lo chiamava "un +1
+fisso ogni giornata")*:
+
+- **non è fisso**: serve la media sopra il 6 e servono 4 difensori in campo.
+  Con la panchina giusta le giornate senza modificatore restano comunque
+  intorno al 9,5%;
+- **il vantaggio è relativo**: quei punti si guadagnano solo contro chi il
+  modificatore non lo prende. Se lo prendono tutte e otto le squadre non
+  sposta la classifica di nessuno. Va quindi letto come una cosa da **non
+  farsi mancare** per pochi crediti, più che come un margine sugli altri.
+
+### Una lettura da non ripetere: "gli A− costano 2,6 volte il listino"
+
+*Aggiunto il 16 novembre 2026.*
+
+Nello storico i difensori A− risultano pagati 2,6 volte il listino, e lo si
+era attribuito al modificatore. Il confronto con la Lega 1996, che il
+modificatore non ce l'ha, lo smentisce: lì un A− costa 4 crediti su 400, qui
+5 su 500 — **la stessa quota**. Su prezzi di listino intorno ai 2 crediti,
+con offerte solo intere da 1 in su, bastano un paio di rilanci a raddoppiare.
+L'effetto vero del modificatore si vede sugli **A+**: 27 crediti qui contro 13
+nella 1996.
 
 ---
 

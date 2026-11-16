@@ -4,9 +4,12 @@
 > la struttura dei dati. Serve a non riscoprire ogni volta le stesse
 > trappole quando si tocca l'agente o il megafile.
 >
-> Scritto il 6 settembre 2026, **aggiornato l'11 settembre 2026** al
-> listone a 3 giornate giocate (intestazione del file: dati reali a fine
-> 3ª giornata, generato l'8 settembre). I VALORI cambieranno con ogni
+> Scritto il 6 settembre 2026, aggiornato l'11 settembre 2026 e di nuovo il
+> **16 novembre 2026** (§14-§16: imbattibilità, scala dei prezzi, nuova
+> convenienza). Il listone è ora quello a **11 giornate giocate**
+> (intestazione del file: dati reali a fine 11ª giornata, 16 novembre 2026);
+> gli esempi numerici dei paragrafi 1-13 risalgono invece alla versione a 3
+> giornate dell'11 settembre. I VALORI cambieranno con ogni
 > aggiornamento del file; la STRUTTURA descritta qui — nomi dei campi,
 > cosa significano, dove sono le trappole — è quella della pipeline e
 > cambia molto più raramente. Se un campo qui descritto sparisce o cambia
@@ -20,10 +23,26 @@
 
 ## 0. Stato dell'aggiornamento
 
-- **531 giocatori**, statistiche stagione corrente a **fine 3ª giornata**
-  (`pv_2627` massimo 3, 162 giocatori a quota 3, 364 con almeno una presenza).
-- La versione a 3 giornate, annunciata come futura nella stesura originale,
-  **è arrivata ed è quella in uso**.
+- **531 giocatori**, statistiche stagione corrente a **fine 11ª giornata**
+  (`pv_2627` massimo 11, 74 giocatori a quota 11, 448 con almeno una presenza).
+  Fonte: `Statistiche_Fantacalcio_Stagione_2026_27_16.novembre.2026_11
+  giornate.xlsx`, foglio "Tutti".
+- Aggiornato **solo il blocco `_2627`** (squadra, presenze, media voto,
+  fantamedia, gol, gol subiti, rigori parati, assist, cartellini, autogol).
+  Prezzi, fasce, titolarità attesa, rischi e tutti i campi storici sono
+  quelli di settembre: **non descrivono il mercato di novembre**.
+- Abbinamento per nome e ruolo: 531 su 531, nessun cambio di squadra, nessuna
+  presenza in calo. Nel file ci sono 72 giocatori che il listone non ha (7 con
+  almeno 5 presenze: Ehizibue, Leite, Darmian, El Shaarawy, Sierro, Wiafe,
+  Esteban): non sono stati aggiunti perché mancano di prezzo e fascia.
+- La fantamedia del file torna dal voto e dagli eventi per 439 giocatori su
+  448; sugli altri 9 c'è uno scarto di 0,1-0,5 che è già nel file sorgente
+  (causa non verificata: forse espulsioni o partite senza voto). Il valore
+  del file è stato preso così com'è.
+- Dalla versione 3.9.9.50 l'agente usa **anche la stagione in corso** per
+  stimare la resa (fantamedia e presenze 2026/27): vedi §17.
+- Per rifare l'aggiornamento: `estrai_statistiche.py` (dall'Excel a JSON) e
+  poi `aggiorna_listone.js`, entrambi nel repo.
 
 ---
 
@@ -145,8 +164,10 @@ esattamente a 100, e due difensori quasi identici per prezzo e resa
 
 L'agente ora calcola una convenienza propria dentro `AI_AGENT.convenienza()`,
 su due assi (resa assoluta e resa per credito), con un correttivo per
-campione piccolo. Il campo `valueScore` del listone resta nel dato ma non
-va più usato per ordinare o filtrare: è lasciato solo come riferimento,
+campione piccolo. Dal 16 novembre 2026 la resa è misurata rispetto al
+giocatore di rimpiazzo del ruolo, non rispetto al 6: vedi §16.
+
+Il campo `valueScore` del listone resta nel dato ma non va più usato per ordinare o filtrare: è lasciato solo come riferimento,
 se mai serve confrontarlo.
 
 `qualityScore` (con il dettaglio in `qualityBreakdown`) non ha lo stesso
@@ -263,6 +284,109 @@ insieme ad ALAJBEGOVIC (21,4), che nel file non compare.
 
 ---
 
+## 14. La fantamedia NON contiene l'imbattibilità (16 novembre 2026)
+
+Ricalcolando `fm_2526` dei portieri dai campi grezzi:
+
+`mv − gs/pv + 3·rp/pv + ass/pv − 0,5·amm/pv − esp/pv − 2·au/pv`
+
+si ottiene esattamente il valore del listone (Carnesecchi 5,58 in entrambi i
+modi, Maignan 5,42, Caprile 4,87). Non c'è nessun +1 per la porta inviolata.
+
+- **Fantalissandria** premia l'imbattibilità: lì `fmStorica` **sottovaluta** i
+  portieri, e di più quelli delle difese solide.
+- **Lega 1996** non la premia: lì `fmStorica` è già corretta.
+
+Le porte inviolate non sono nel listone. L'agente le stima dai gol subiti
+(`AI_AGENT.bonusImbattibilita`): con una media di L gol a partita la quota di
+partite a zero è circa e^−L. È una stima, non un conteggio: Svilar 0,40 a
+partita (+15 punti stagione), Falcone 0,24 (+9).
+
+Il commento nel codice che diceva il contrario ("il portiere prende −1 per
+gol subito e +1 per imbattibilità, quindi... fm 5,408 contro 4,973") è stato
+corretto.
+
+## 15. Su quale lega è tarato il listino (16 novembre 2026)
+
+`pma` e `pfc` sono prezzi per una lega a **8 squadre da 500 crediti**. Prova:
+i 200 giocatori più cari (24 POR, 64 DIF, 64 CEN, 48 ATT) sommano 3861 di
+`pma` e 4049 di `pfc`, contro 4000 crediti in circolazione.
+
+In una lega con un monte crediti diverso i prezzi vanno riportati in scala.
+L'agente lo fa con `AI_AGENT.scalaPrezzi()` e `AI_AGENT.prezzoLega(v)`:
+
+`prezzo di lega = 1 + (prezzo di listino − 1) × scala`
+`scala = (crediti totali − slot totali) / (4000 − 200)`
+
+Fantalissandria: scala 1. Lega 1996 (3290 crediti, 192 slot): scala 0,815.
+
+Chi legge `pma` o `pfc` direttamente dal file ottiene il prezzo di listino,
+non quello di lega: per la 1996 usare `AI_AGENT.mercato(p)` e
+`AI_AGENT.tettoPrezzo(p)`.
+
+## 16. Come si misura adesso la convenienza (16 novembre 2026)
+
+Fino alla 3.9.9.48 `convenienza()` calcolava `(fantamedia − 6) × 38 ×
+titolarità`. Lo zero a 6 per tutti i ruoli dava tre effetti sbagliati:
+
+- tutti i 38 portieri con storico risultavano **in perdita** (hanno
+  fantamedia intorno a 5 per via dei gol subiti) e i 26 senza storico
+  valevano 0: i primi consigliati erano terzi portieri mai visti in Serie A;
+- lo stesso per 81 difensori su 188;
+- una resa negativa divisa per il prezzo si avvicina a zero, quindi fra due
+  giocatori "in perdita" il più caro sembrava il più efficiente.
+
+Ora lo zero è il **giocatore di rimpiazzo** del ruolo
+(`AI_AGENT.rimpiazzo(role)`): il quartile basso della fantamedia fra chi ha
+almeno 20 presenze. Valori col listone attuale: POR 5,10 (4,82 senza
+imbattibilità), DIF 5,84, CEN 6,03, ATT 6,45. Chi ha poche presenze viene
+tirato verso questo valore, non verso il 6; chi non ha storico vale 0, cioè
+"come un rimpiazzo". Sotto zero non si divide più per il prezzo.
+
+`puntiAttesi` va quindi letto come **punti a stagione in più di un giocatore
+preso a 1 credito**, non in più della sufficienza.
+
+Stessa correzione nell'elenco "DA NON RILANCIARE": i giocatori senza storico
+ne sono esclusi (la loro resa 0 è assenza di dati, non scarso rendimento), e
+la riga mostra il motivo vero della segnalazione — posizione per prezzo
+contro posizione per resa — invece del tetto del listone, che in 14 casi su
+19 era più alto del mercato e faceva leggere la frase al contrario.
+
+## 17. La stagione in corso entra nella stima (16 novembre 2026, v3.9.9.50)
+
+Voluto da Polibio in vista di scambi e mercato di gennaio. Prima la resa
+usava solo `fmStorica` (tre stagioni passate): a campionato avviato ignorava
+quanto visto in campo e lasciava senza giudizio 83 giocatori privi di storico
+ma con 5 o più presenze quest'anno (Ramos G., Vicario, Mora...).
+
+**Fantamedia** (`AI_AGENT.campione(p)`): media fra passato e presente pesata
+per le presenze, con le partite di quest'anno che contano **doppio**.
+
+`fm = (nS × fmStorica + 2 × nC × fm_2627) / (nS + 2 × nC)`
+
+`nS` sono le presenze delle stagioni entrate in `fmStorica`, cioè quelle con
+almeno 10 presenze (verificato: la media pesata così calcolata riproduce
+`fmStorica` per 335 giocatori su 335). Il temperamento per campione piccolo
+si applica sul campione efficace `nS + 2 × nC`, fiducia piena a 50.
+
+**Titolarità** (`AI_AGENT.titolaritaStimata(p)`): `expectedTitolarita` di
+settembre corretta con le presenze reali. La previsione vale 19 giornate, i
+fatti valgono le giornate giocate: all'11ª le presenze pesano il 37%.
+
+Due scelte, non misure: il peso doppio e le 19 giornate. Stanno in cima a
+`fantacalcio_ai.js` (`PESO_STAGIONE_CORRENTE`, `GIORNATE_PRIOR_TITOLARITA`).
+
+**Limite**: le presenze non distinguono chi ha perso il posto da chi è stato
+infortunato. Martinez L. (5 presenze su 11) scende dal 92% al 75% di
+titolarità stimata: se era fermo per infortunio, è sottovalutato.
+`infortuni_serie_a.js` è fermo all'8 settembre e non aiuta.
+
+Esempi all'11ª giornata: Rabiot fantamedia 6,73 storica e 8,67 quest'anno →
+7,18; Dimarco 7,24 e 6,20 → 7,06; Mora (nessuno storico, 9 presenze a 7,89)
+passa da "come un rimpiazzo" a +21 punti stagione.
+
+---
+
 ## Riepilogo delle trappole (le cose da NON rifare)
 
 1. Non filtrare su `modPresenzeTotali` per ruoli diversi da POR/DIF:
@@ -280,3 +404,9 @@ insieme ad ALAJBEGOVIC (21,4), che nel file non compare.
 7. Non fidarsi di `tierConsensus` quando `tierAgreement` dice
    `FONTE SINGOLA`: poggia su una fonte sola e può discostarsi da Laudantes,
    come su Dybala (§13).
+8. Non trattare `fmStorica` dei portieri come completa a Fantalissandria:
+   manca l'imbattibilità (§14).
+9. Non usare `pma`/`pfc` come prezzi della Lega 1996: sono tarati su 4000
+   crediti, lì ne circolano 3290 (§15).
+10. Non misurare la resa rispetto al 6: rende negativi tutti i portieri.
+    Usare il rimpiazzo del ruolo (§16).

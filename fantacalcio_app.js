@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.48 - APP LOGIC
+        // FANTACALCIO v3.9.9.50 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -28,6 +28,9 @@
                 budgetPerSquadra: null,      // uguale per tutte
                 regolaTurno: 'chiamante',
                 modificatoreDifesa: true,
+                // +1 al portiere che non subisce gol. La fantamedia del
+                // listone non lo contiene: l'agente lo stima a parte.
+                imbattibilita: true,
                 // Niente riconferme a Fantalissandria: tutti i giocatori
                 // passano dall'asta, quindi ogni prezzo e' un prezzo di
                 // mercato e va letto come tale.
@@ -48,6 +51,7 @@
                 },
                 regolaTurno: 'acquirente',
                 modificatoreDifesa: false,
+                imbattibilita: false,
                 // Ogni squadra puo' riconfermare fino a 3 giocatori
                 // dell'anno prima, al massimo uno per ruolo (quindi un
                 // reparto resta sempre scoperto). Si registrano PRIMA
@@ -123,6 +127,8 @@
                 orderConfirmed = false;
                 teamNamesConfirmed = false;
                 undoStack = [];
+                turnoIndex = 0;
+                phaseOverride = null;
                 try {
                     localStorage.removeItem('fantacalcio_config_completed');
                     localStorage.removeItem('astaReports');
@@ -294,7 +300,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.48';
+        const APP_VERSION = '3.9.9.50';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -358,6 +364,102 @@
             return (team && typeof team.budgetIniziale === 'number')
                 ? team.budgetIniziale : BUDGET_TOTAL;
         }
+
+        /* ==========================================================
+         * STATO DELL'ASTA CHE DEVE SOPRAVVIVERE A UN RICARICAMENTO
+         *
+         * Fino alla 3.9.9.48 in localStorage finivano solo le rose. Ordine
+         * di chiamata, turno, fase forzata e storico degli annullamenti
+         * vivevano in memoria, e all'avvio la pagina non rileggeva nemmeno
+         * le rose: dopo un ricaricamento (o una scheda scaricata dal
+         * browser, cosa che su tablet succede da sola) ricompariva la
+         * schermata dei nomi, e confermarla di nuovo SOVRASCRIVEVA le rose
+         * salvate con rose vuote. L'unica via d'uscita era "Carica Asta".
+         *
+         * Ora tutto quello che serve a riprendere dal punto esatto viene
+         * salvato a ogni cambio e riletto all'avvio (ripristinaSessione).
+         * ========================================================== */
+        const CHIAVE_STATO_ASTA = 'fantacalcio_stato_asta';
+
+        function salvaStatoAsta() {
+            try {
+                localStorage.setItem(CHIAVE_STATO_ASTA, JSON.stringify({
+                    lega: legaCorrente,
+                    teamOrder: teamOrder,
+                    orderConfirmed: orderConfirmed,
+                    turnoIndex: turnoIndex,
+                    phaseOverride: phaseOverride,
+                    undoStack: undoStack
+                }));
+            } catch (e) { /* spazio esaurito o navigazione privata: si prosegue */ }
+        }
+
+        function leggiStatoAsta() {
+            try {
+                const grezzo = localStorage.getItem(CHIAVE_STATO_ASTA);
+                if (!grezzo) return null;
+                const st = JSON.parse(grezzo);
+                // Uno stato salvato per l'altra lega non va applicato a questa.
+                if (!st || st.lega !== legaCorrente) return null;
+                return st;
+            } catch (e) { return null; }
+        }
+
+        /** Un ordine di chiamata e' valido se contiene le 8 squadre, una volta sola. */
+        function ordineValido(o) {
+            return Array.isArray(o) && o.length === 8 &&
+                   new Set(o).size === 8 && o.every(n => n >= 1 && n <= 8);
+        }
+
+        /**
+         * Riprende l'asta dopo un ricaricamento della pagina.
+         * Ritorna true se c'era qualcosa da riprendere.
+         */
+        function ripristinaSessione() {
+            let salvato = null, configurata = false;
+            try {
+                salvato = localStorage.getItem('fantacalcio_v3_1');
+                configurata = localStorage.getItem('fantacalcio_config_completed') === 'true';
+            } catch (e) { return false; }
+            if (!salvato || !configurata) return false;
+
+            try {
+                const data = JSON.parse(salvato);
+                for (let i = 1; i <= 8; i++) {
+                    if (data[i] && Array.isArray(data[i].players)) teams[i] = data[i];
+                }
+            } catch (e) { return false; }
+            teamNamesConfirmed = true;
+            nascondiSetupNomi();
+            const mine = document.getElementById('myTeamName');
+            if (mine && teams[1]) mine.textContent = teams[1].name;
+
+            const st = leggiStatoAsta();
+            const sezOrdine = document.getElementById('setupSection');
+            if (st && st.orderConfirmed && ordineValido(st.teamOrder)) {
+                teamOrder = st.teamOrder;
+                orderConfirmed = true;
+                turnoIndex = (typeof st.turnoIndex === 'number' && st.turnoIndex >= 0)
+                    ? st.turnoIndex % 8 : 0;
+                phaseOverride = ROLE_ORDER.includes(st.phaseOverride) ? st.phaseOverride : null;
+                undoStack = Array.isArray(st.undoStack) ? st.undoStack.slice(-UNDO_MAX) : [];
+                if (sezOrdine) sezOrdine.style.display = 'none';
+                initTeamButtons();
+            } else {
+                // Rose salvate da una versione precedente, senza ordine: i
+                // nomi ci sono gia', resta da reinserire solo l'ordine.
+                if (sezOrdine) sezOrdine.style.display = 'block';
+                initSetup();
+            }
+
+            updateDisplay();
+            renderTeamsOverview();
+            filterAvailable();
+            setupAutocomplete();
+            aggiornaTurnoChiamata();
+            return true;
+        }
+        window.ripristinaSessione = ripristinaSessione;
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -452,6 +554,7 @@
                 return;
             }
             phaseOverride = ruolo;
+            salvaStatoAsta();
             showMessage(ruolo
                 ? `⚠️ Fase forzata manualmente: ${ruolo}`
                 : '✅ Fase tornata in modalità automatica', 'error');
@@ -675,9 +778,11 @@
             localStorage.removeItem('fantacalcio_config_completed');
             localStorage.removeItem('astaReports');
             localStorage.removeItem('giocatoriManuali');
+            localStorage.removeItem(CHIAVE_STATO_ASTA);
             azzeraNoteAvversari();
             azzeraEsitoReport();
             undoStack = [];
+            phaseOverride = null;
             teamNamesConfirmed = false;
             orderConfirmed = false;
             teamOrder = [];
@@ -895,6 +1000,7 @@
             initTeamButtons();
             renderTeamsOverview();
             loadData();
+            salvaStatoAsta();
             aggiornaTurnoChiamata();
 
             // Nelle leghe a budget differenziato si passa dalla conferma dei
@@ -907,6 +1013,7 @@
             teamOrder = [];
             turnoIndex = 0;
             orderConfirmed = false;
+            salvaStatoAsta();
             document.getElementById('setupSection').style.display = 'block';
             initSetup();
         }
@@ -929,6 +1036,12 @@
         function downloadAstaJSON() {
             const data = {
                 timestamp: new Date().toISOString(),
+                // Lega, turno e fase forzata: senza, un file ricaricato
+                // ripartiva sempre dal primo dell'ordine e poteva essere
+                // aperto per sbaglio nella lega sbagliata (rosa e budget diversi).
+                lega: legaCorrente,
+                turnoIndex: turnoIndex,
+                phaseOverride: phaseOverride,
                 teams: teams,
                 teamOrder: teamOrder,
                 conversationHistory: conversationHistory,
@@ -955,12 +1068,27 @@
             reader.onload = function(e) {
                 try {
                     const data = JSON.parse(e.target.result);
+
+                    // Un salvataggio dell'altra lega ha rosa, budget e regola
+                    // del turno diversi: caricarlo qui darebbe un'asta
+                    // incoerente senza nessun errore visibile.
+                    if (data.lega && LEGHE[data.lega] && data.lega !== legaCorrente) {
+                        showMessage('Questo salvataggio e\' di ' + LEGHE[data.lega].nome +
+                            ': passa a quella lega prima di caricarlo.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
                     
                     // Ripristina i dati
                     teams = data.teams || teams;
                     teamOrder = data.teamOrder || teamOrder;
                     conversationHistory = data.conversationHistory || conversationHistory;
                     orderConfirmed = true; // Marca l'ordine come confermato
+                    turnoIndex = (typeof data.turnoIndex === 'number' && data.turnoIndex >= 0)
+                        ? data.turnoIndex % 8 : 0;
+                    phaseOverride = ROLE_ORDER.includes(data.phaseOverride) ? data.phaseOverride : null;
+                    // Gli annullamenti si riferivano all'asta di prima.
+                    undoStack = [];
                     
                     // MIGRAZIONE: Riempi il campo 'team' mancante per giocatori vecchi
                     for (let i = 1; i <= 8; i++) {
@@ -1030,6 +1158,23 @@
             document.querySelectorAll('.team-button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             selectedTeam = teamNum;
+        }
+
+        /**
+         * Prezzo di listino da mostrare, nella scala della lega in uso.
+         * Il listone e' tarato su 8 squadre da 500 crediti: nella Lega 1996
+         * ne circolano meno e gli stessi giocatori costano circa il 18% in
+         * meno. Il calcolo sta nell'agente (AI_AGENT.mercato); senza agente
+         * si mostra il prezzo del listone cosi' com'e'.
+         */
+        function prezzoListino(p) {
+            try {
+                if (typeof AI_AGENT !== 'undefined' && AI_AGENT.mercato) {
+                    const v = AI_AGENT.mercato(p);
+                    if (v !== null && v !== undefined) return v;
+                }
+            } catch (e) { /* si ricade sul listone */ }
+            return p ? p.pma : null;
         }
 
         // AUTOCOMPLETE
@@ -1487,7 +1632,8 @@
 
             const tier = p.tierConsensus || p.tier || '—';
             const tierCls = 'tier-' + String(tier).replace(/\+/g, 'plus').replace(/-/g, 'minus');
-            const pma = (p.pma != null) ? Math.round(p.pma * 10) / 10 : '—';
+            const pmaLega = prezzoListino(p);
+            const pma = (pmaLega != null) ? Math.round(pmaLega * 10) / 10 : '—';
             const tetto = sch && sch.prezzoMaxConsigliato != null ? sch.prezzoMaxConsigliato : null;
             const tit = (p.expectedTitolarita != null) ? Math.round(p.expectedTitolarita) : null;
 
@@ -1539,7 +1685,7 @@
                     const pari = PLAYERS_DATA.filter(x => x.role === p.role);
                     const cv = AI_AGENT.convenienza(p, pari);
                     if (cv && cv.puntiAttesi != null) {
-                        chips.push(chip('Resa attesa', cv.puntiAttesi + ' pt',
+                        chips.push(chip('Resa oltre il rimpiazzo', cv.puntiAttesi + ' pt',
                             cv.puntiAttesi >= 25 ? '#4ade80'
                           : cv.puntiAttesi >= 10 ? '#fbbf24' : '#e2e8f0'));
                     }
@@ -1628,10 +1774,18 @@
                 return;
             }
 
-            // Controlla se già comprato
-            if (team.players.some(p => p.id === selectedPlayer.id)) {
-                showMessage('Giocatore già nella squadra', 'error');
-                return;
+            // Controlla se già comprato — da QUALSIASI squadra, non solo da
+            // questa. L'elenco e l'autocompletamento nascondono gia' i
+            // venduti, ma una selezione rimasta nel modulo da prima (o fatta
+            // da console) passava: lo stesso giocatore finiva in due rose.
+            for (let k = 1; k <= 8; k++) {
+                if (teams[k] && teams[k].players.some(p => p.id === selectedPlayer.id)) {
+                    showMessage(k === Number(selectedTeam)
+                        ? 'Giocatore già nella squadra'
+                        : selectedPlayer.name + ' è già stato acquistato da ' + teams[k].name,
+                        'error');
+                    return;
+                }
             }
 
             // CONTROLLA VINCOLI DI RUOLO
@@ -1656,6 +1810,24 @@
                     'error'
                 );
                 return;
+            }
+
+            // CREDITI PER COMPLETARE LA ROSA.
+            // Ogni slot ancora vuoto costa almeno 1 credito. Un acquisto che
+            // lascia meno crediti degli slot rimasti rende impossibile
+            // chiudere la rosa: quasi sempre e' un prezzo battuto male o la
+            // squadra sbagliata. Non si blocca del tutto (se al tavolo e'
+            // andata davvero cosi' va registrato), ma si chiede conferma.
+            const slotDopo = Math.max(0, PLAYERS_PER_SQUAD - team.players.length - 1);
+            const massimo = team.budget - slotDopo;
+            if (price > massimo) {
+                const ok = confirm(
+                    'Dopo questo acquisto a ' + team.name + ' resterebbero ' +
+                    (team.budget - price) + ' crediti per ' + slotDopo +
+                    ' slot ancora da riempire: non potrebbe completare la rosa.\n' +
+                    'Offerta massima sostenibile: ' + Math.max(0, massimo) + '.\n\n' +
+                    'Registrare comunque?');
+                if (!ok) return;
             }
 
             team.players.push({
@@ -1712,6 +1884,9 @@
             turnoIndex = (idxPartenza !== null)
                 ? (idxPartenza + 1) % 8
                 : (turnoIndex + 1) % 8;
+            // Il turno e' cambiato DOPO saveData(): va riscritto, altrimenti
+            // un ricaricamento riporterebbe indietro di una chiamata.
+            salvaStatoAsta();
 
             updateDisplay();
             renderTeamsOverview();
@@ -3106,8 +3281,9 @@
             list.innerHTML = filtered.map(p => {
                 const t = p.tierConsensus || p.tier || '—';
                 const cls = 'tier-' + String(t).replace(/\+/g, 'plus').replace(/-/g, 'minus');
-                const pma = (p.pma !== undefined && p.pma !== null)
-                    ? Math.round(p.pma) : '—';
+                const pmaLega = prezzoListino(p);
+                const pma = (pmaLega !== undefined && pmaLega !== null)
+                    ? Math.round(pmaLega) : '—';
                 return `
                 <div class="player-row" onclick="selectPlayerFromList(${p.id}, '${escapeAttr(p.name)}', '${p.role}', '${escapeAttr(p.team)}')" style="cursor: pointer;">
                     <div class="name">${p.name}</div>
@@ -3134,6 +3310,7 @@
                 data[i] = teams[i];
             }
             localStorage.setItem('fantacalcio_v3_1', JSON.stringify(data));
+            salvaStatoAsta();
         }
 
         function loadData() {
@@ -3337,4 +3514,10 @@
             // tutti dalla configurazione della lega scelta (azzera=false:
             // qui si riallinea soltanto, senza toccare l'asta in corso).
             applicaLega(legaCorrente, false);
+
+            // Riprende l'asta dal punto in cui era, se la pagina e' stata
+            // ricaricata: rose, ordine, turno, fase forzata, annullamenti.
+            if (ripristinaSessione()) {
+                showMessage('Asta ripresa dal punto in cui era.', 'success');
+            }
         });

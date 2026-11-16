@@ -2,8 +2,21 @@
 // AGENTE IA FANTACALCIO — v2.0
 // Allineato a players_data.js del 2026-09-03 (megafile v3).
 // Fonti: Fantaculo + Fantacalcio.it (4 stagioni) + Laudantes (2 stagioni).
-// Tarato sulle regole della lega: 8 squadre, 500 crediti, 25 giocatori,
-// modificatore difesa attivo con portiere incluso.
+// Tarato di base su Fantalissandria (8 squadre, 500 crediti, 25 giocatori,
+// modificatore difesa attivo con portiere incluso). Per le altre leghe
+// configuraLega() riallinea rosa, budget, modificatore, imbattibilita' e
+// la scala dei prezzi (vedi scalaPrezzi()).
+//
+// Revisione del 16 novembre 2026:
+//  - convenienza() misura la resa rispetto al giocatore di rimpiazzo del
+//    ruolo, non rispetto al 6 fisso (che rendeva negativi tutti i portieri);
+//  - la fantamedia dei portieri viene integrata con una stima
+//    dell'imbattibilita', dove la lega la premia;
+//  - prezzi di listino e tetti vengono riscalati sui crediti reali della
+//    lega, e il budget e' quello della singola squadra, non una costante;
+//  - la resa attesa tiene conto anche della STAGIONE IN CORSO (fantamedia
+//    e presenze 2026/27), non solo delle tre passate: vedi campione() e
+//    titolaritaStimata(). Serve per scambi e mercato di gennaio.
 // =============================================================================
 
 (function () {
@@ -93,6 +106,36 @@
   }
 
   const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+
+  /**
+   * SU QUALE LEGA E' TARATO IL LISTINO.
+   *
+   * I prezzi pma/pfc sono pensati per una lega a 8 da 500 crediti con rose
+   * da 25: i 200 migliori del listone sommano 4049 crediti di pfc contro i
+   * 4000 in circolazione. In una lega con meno crediti gli stessi giocatori
+   * costano meno, perche' i soldi da spendere sono meno: vedi scalaPrezzi().
+   */
+  const LISTINO_CREDITI_RIF = 4000;
+  const LISTINO_SLOT_RIF = 200;
+
+  /**
+   * QUANTO PESA LA STAGIONE IN CORSO.
+   *
+   * Una partita di quest'anno dice di piu' di una di due anni fa: stessa
+   * squadra, stesso allenatore, stesso ruolo in campo. Per questo conta
+   * doppio. E' una scelta, non una misura: con 1 la stagione in corso
+   * sarebbe solo "un'annata in piu'", con 3 undici giornate buone
+   * basterebbero a ribaltare tre campionati. Il temperamento per campione
+   * piccolo resta comunque attivo, quindi un avvio fortunato non domina.
+   */
+  const PESO_STAGIONE_CORRENTE = 2;
+
+  /**
+   * Quanto "vale", in giornate, la stima di titolarita' fatta a settembre.
+   * Mezzo campionato: all'11a giornata le presenze reali pesano il 37%,
+   * a fine andata il 50%, a fine stagione i due terzi.
+   */
+  const GIORNATE_PRIOR_TITOLARITA = 19;
   const round1 = (v) => Math.round(v * 10) / 10;
   const round2 = (v) => Math.round(v * 100) / 100;
 
@@ -159,9 +202,11 @@
        * PORTIERI: quota bassa, ma non perche' i portieri si equivalgano.
        * Sul MODIFICATORE contano solo per il voto, e li' Falcone (3.75,
        * mv 6.307) vale quanto Svilar (44.4, mv 6.320). Sui PUNTI invece
-       * la differenza esiste: il portiere prende -1 per gol subito e +1
-       * per imbattibilita', quindi uno di una difesa solida rende di piu'
-       * (Svilar fm 5.408 contro Falcone 4.973, ~16 punti stagione).
+       * la differenza esiste: il portiere prende -1 per gol subito, quindi
+       * uno di una difesa solida rende di piu' (Svilar fm 5.408 contro
+       * Falcone 4.973, ~16 punti stagione). ATTENZIONE: quella fantamedia
+       * NON contiene il +1 di imbattibilita', che a Fantalissandria allarga
+       * ancora il divario di qualche punto: lo stima bonusImbattibilita().
        * Ma quei 16 punti costano 40 crediti, e Skorupski (5.45, fm 5.217,
        * titolare al 91%) ne recupera la maggior parte spendendone 5.
        * Da qui la quota bassa: prendere un portiere titolare di buona
@@ -203,6 +248,271 @@
        */
       this.slotTitolari = { POR: 1, DIF: 4, CEN: 5, ATT: 3 };
       this.prezzoPanchinaro = 1.5;
+
+      // Valore di lega dell'imbattibilita', ricordato per poterlo spegnere
+      // e riaccendere quando si cambia lega (configuraLega).
+      this._imbattibilitaBase = this.punteggi.imbattibilita;
+      this._cacheRimpiazzo = null;
+    }
+
+    // ------------------------------------------------- budget e prezzi di lega
+
+    /**
+     * Budget di partenza DI QUELLA SQUADRA.
+     *
+     * Nella Lega 1996 si parte da 400 piu' il residuo dell'anno prima, quindi
+     * il budget cambia da squadra a squadra (da 400 a 443). Usare la costante
+     * di lega per tutti sbagliava i target di reparto di MARCHINHOS del 4% e
+     * le quote di spesa di Dinamo Bosh del 10%.
+     */
+    budgetDi(team) {
+      const b = num(team && team.budgetIniziale);
+      return b !== null && b > 0 ? b : this.budgetTotal;
+    }
+
+    /**
+     * SCALA DEI PREZZI DELLA LEGA rispetto al listino.
+     *
+     * Ogni slot costa almeno 1 credito: quello che si puo' davvero spostare
+     * da un giocatore all'altro e' il resto. Il rapporto fra il "resto" di
+     * questa lega e quello della lega su cui e' tarato il listino dice di
+     * quanto vanno ridotti (o alzati) i prezzi sopra 1.
+     *
+     *   Fantalissandria: (4000 - 200) / (4000 - 200) = 1      -> nessun effetto
+     *   Lega 1996:       (3290 - 192) / (4000 - 200) = 0,815  -> prezzi -18%
+     *
+     * E' una correzione proporzionale, quindi un'approssimazione: non sa se
+     * in una lega povera si risparmia sui top o sui gregari. Ma e' molto
+     * meglio di nessuna correzione, che nella 1996 dava tetti piu' alti del
+     * 20% circa di quanto la lega potesse permettersi.
+     */
+    scalaPrezzi() {
+      let t = {};
+      try { t = getTeams() || {}; } catch (e) { t = {}; }
+      const chiavi = Object.keys(t).filter((k) => t[k]);
+      const n = chiavi.length || 8;
+      const crediti = chiavi.length
+        ? chiavi.reduce((s, k) => s + this.budgetDi(t[k]), 0)
+        : this.budgetTotal * n;
+      const slot = this.squadSize * n;
+      const scala = (crediti - slot) / (LISTINO_CREDITI_RIF - LISTINO_SLOT_RIF);
+      // Fuori da un intervallo ragionevole e' piu' probabile un dato sbagliato
+      // (budget non ancora inseriti) che una lega davvero cosi' diversa.
+      if (!isFinite(scala) || scala < 0.4 || scala > 2.5) return 1;
+      return Math.abs(scala - 1) < 0.005 ? 1 : scala;
+    }
+
+    /** Un prezzo di listino riportato ai crediti di questa lega. */
+    prezzoLega(v) {
+      const x = num(v);
+      if (x === null) return v;
+      const k = this.scalaPrezzi();
+      if (k === 1 || x <= 1) return x;
+      return round1(1 + (x - 1) * k);
+    }
+
+    /** Prezzo di mercato atteso in questa lega (pma riscalato). */
+    mercato(p) {
+      return (p && p.pma != null) ? this.prezzoLega(p.pma) : null;
+    }
+
+    /** I prezzi di riferimento per fascia, nella scala di questa lega. */
+    prezziTier(role) {
+      const base = this.BASELINE_PREZZO_TIER[role] || {};
+      const out = {};
+      Object.keys(base).forEach((t) => { out[t] = this.prezzoLega(base[t]); });
+      return out;
+    }
+
+    // ------------------------------------------------- resa attesa del giocatore
+
+    /**
+     * IMBATTIBILITA' STIMATA DEL PORTIERE (punti a partita).
+     *
+     * La fantamedia del listone NON contiene il bonus imbattibilita':
+     * verificato ricalcolandola, fm = voto - gol subiti + 3 x rigori parati
+     * - cartellini, senza alcun +1 (Carnesecchi 2025/26: 5,58 in entrambi i
+     * modi). A Fantalissandria quel +1 esiste, quindi i portieri delle
+     * difese solide rendono piu' di quanto dica il listone.
+     *
+     * Le porte inviolate non sono nel dato, ma i gol subiti si': con una
+     * media di L gol a partita la quota di partite senza subirne e' circa
+     * e^-L (distribuzione di Poisson, la stima standard per i gol). Con 1
+     * gol a partita fa il 37%, in linea con quanto si osserva davvero.
+     * Stesse stagioni e stessa soglia della fantamedia storica: le tre
+     * passate, pesate per presenze, minimo 10.
+     */
+    bonusImbattibilita(p) {
+      const premio = this.punteggi.imbattibilita || 0;
+      if (!premio || normRole(p && p.role) !== 'POR') return 0;
+      let pesi = 0, somma = 0;
+      ['2324', '2425', '2526'].forEach((a) => {
+        const pv = Number(p['pv_' + a]) || 0;
+        if (pv < 10) return;
+        const gs = Number(p['gs_' + a]) || 0;
+        somma += pv * Math.exp(-gs / pv);
+        pesi += pv;
+      });
+      return pesi ? premio * (somma / pesi) : 0;
+    }
+
+    /** Giornate di campionato giocate finora (il massimo di presenze 2026/27). */
+    giornateGiocate() {
+      const lista = getPlayers();
+      if (!this._cacheGiornate || this._cacheGiornate.n !== lista.length ||
+          this._cacheGiornate.rif !== lista) {
+        let g = 0;
+        lista.forEach((p) => { g = Math.max(g, Number(p.pv_2627) || 0); });
+        this._cacheGiornate = { n: lista.length, rif: lista, g: g };
+      }
+      return this._cacheGiornate.g;
+    }
+
+    /**
+     * IL CAMPIONE SU CUI SI STIMA UN GIOCATORE: passato + stagione in corso.
+     *
+     * Fino al 16 novembre 2026 la resa usava solo fmStorica, cioe' le tre
+     * stagioni passate. Andava bene ad agosto; a campionato avviato voleva
+     * dire ignorare quello che si e' visto in campo, e lasciare senza
+     * giudizio gli 83 giocatori privi di storico in Serie A che pero' hanno
+     * gia' giocato 5 o piu' partite quest'anno (Ramos, Vicario, Mora...).
+     *
+     * Le due parti si combinano pesando per le presenze, con le partite di
+     * quest'anno che contano PESO_STAGIONE_CORRENTE volte:
+     *
+     *   fm = (nS x fmStorica + peso x nC x fm2627) / (nS + peso x nC)
+     *
+     * nS sono le presenze delle stagioni entrate in fmStorica (quelle con
+     * almeno 10 presenze: verificato, la formula riproduce il valore del
+     * listone per 335 giocatori su 335). Per i portieri a ciascuna parte
+     * si aggiunge l'imbattibilita' stimata, dove la lega la premia.
+     */
+    campione(p) {
+      let nS = 0;
+      const fmS0 = num(p && p.fmStorica);
+      if (fmS0 !== null) {
+        ['2324', '2425', '2526'].forEach((a) => {
+          const pv = Number(p['pv_' + a]) || 0;
+          if (pv >= 10) nS += pv;
+        });
+        if (!nS) nS = 10;   // storico presente ma presenze non leggibili
+      }
+      const fmS = fmS0 !== null ? fmS0 + this.bonusImbattibilita(p) : null;
+
+      const nC = Number(p && p.pv_2627) || 0;
+      let fmC = nC > 0 ? num(p.fm_2627) : null;
+      if (fmC !== null && normRole(p.role) === 'POR' && (this.punteggi.imbattibilita || 0)) {
+        const gs = Number(p.gs_2627) || 0;
+        fmC += this.punteggi.imbattibilita * Math.exp(-gs / nC);
+      }
+
+      const pesoS = fmS !== null ? nS : 0;
+      const pesoC = fmC !== null ? PESO_STAGIONE_CORRENTE * nC : 0;
+      const tot = pesoS + pesoC;
+      return {
+        presenzeStoriche: fmS !== null ? nS : 0,
+        fmStorica: fmS,
+        presenzeStagione: nC,
+        fmStagione: fmC,
+        campioneEfficace: tot,
+        fm: tot > 0 ? ((fmS !== null ? pesoS * fmS : 0) + (fmC !== null ? pesoC * fmC : 0)) / tot : null
+      };
+    }
+
+    /**
+     * Fantamedia nelle regole di questa lega, passato e presente insieme;
+     * null se del giocatore non esiste nessuna partita in archivio.
+     */
+    fmDiLega(p) {
+      return this.campione(p).fm;
+    }
+
+    /**
+     * TITOLARITA': la stima di settembre corretta con le presenze reali.
+     *
+     * expectedTitolarita e' una previsione fatta prima che si giocasse. A
+     * campionato in corso va confrontata con i fatti: chi era dato al 90% e
+     * ha giocato 3 partite su 11 non e' piu' un titolare, e viceversa.
+     * Si fa una media in cui la previsione vale GIORNATE_PRIOR_TITOLARITA
+     * giornate e i fatti valgono le giornate giocate: all'inizio comanda la
+     * previsione, col passare del campionato comandano le presenze.
+     *
+     * LIMITE da tenere presente: le presenze non distinguono chi ha perso il
+     * posto da chi e' stato infortunato. Un titolare rientrato da un lungo
+     * stop risulta sottostimato: su di lui decide chi conosce la situazione.
+     * Nelle prime 3 giornate la correzione non si applica (troppo poco).
+     */
+    titolaritaStimata(p) {
+      const attesa = Math.max(0, Math.min(1, (Number(p && p.expectedTitolarita) || 0) / 100));
+      const g = this.giornateGiocate();
+      if (g < 3) return attesa;
+      const reale = Math.max(0, Math.min(1, (Number(p.pv_2627) || 0) / g));
+      return (GIORNATE_PRIOR_TITOLARITA * attesa + g * reale) / (GIORNATE_PRIOR_TITOLARITA + g);
+    }
+
+    /**
+     * IL GIOCATORE DI RIMPIAZZO, per ruolo.
+     *
+     * E' la fantamedia di chi si prende comunque a 1 credito: il quartile
+     * basso fra i giocatori del ruolo con uno storico minimo. Serve a due
+     * cose in convenienza():
+     *
+     *  - e' lo ZERO della scala. Un giocatore vale per quanto rende IN PIU'
+     *    di quello che avrei avuto gratis, non per quanto sta sopra il 6.
+     *    Col 6 fisso tutti i portieri (fantamedia intorno a 5, per via dei
+     *    gol subiti) risultavano in perdita, e 81 difensori su 188 pure;
+     *  - e' il valore verso cui si tira chi ha poche presenze. Di uno
+     *    sconosciuto l'ipotesi prudente e' "come un rimpiazzo", non "da 6":
+     *    per un portiere da 6 di fantamedia vorrebbe dire fuoriclasse.
+     */
+    rimpiazzo(role) {
+      const r = normRole(role);
+      const lista = getPlayers();
+      const firma = lista.length + '|' + (this.punteggi.imbattibilita || 0);
+      if (!this._cacheRimpiazzo || this._cacheRimpiazzo.firma !== firma) {
+        const perRuolo = {};
+        ROLES.forEach((ru) => {
+          const fms = lista
+            .filter((p) => normRole(p.role) === ru && !p.inseritoManualmente &&
+                           presenzeTotali(p) >= PRESENZE_MINIME)
+            .map((p) => this.fmDiLega(p))
+            .filter((v) => v !== null)
+            .sort((a, b) => a - b);
+          perRuolo[ru] = fms.length >= 8 ? fms[Math.floor(fms.length * 0.25)] : 6;
+        });
+        this._cacheRimpiazzo = { firma: firma, perRuolo: perRuolo };
+      }
+      const v = this._cacheRimpiazzo.perRuolo[r];
+      return v != null ? v : 6;
+    }
+
+    /**
+     * Punti attesi a stagione IN PIU' del rimpiazzo del suo ruolo.
+     * Zero = vale quanto uno preso a 1 credito; negativo = rende meno.
+     */
+    resaAttesa(p) {
+      const base = this.rimpiazzo(p.role);
+      const c = this.campione(p);
+      const fm = c.fm;
+      const tit = this.titolaritaStimata(p);
+      if (fm === null) return 0;   // nessuna partita in archivio: ipotesi "rimpiazzo"
+      // La fiducia si misura sul campione davvero usato, con le partite di
+      // quest'anno che contano doppio come nella media.
+      const fiducia = Math.min(1, c.campioneEfficace / PRESENZE_AFFIDABILI);
+      const fmTemperata = base + (fm - base) * fiducia;
+      return (fmTemperata - base) * 38 * tit;
+    }
+
+    /**
+     * Resa per credito. Dividere una resa NEGATIVA per il prezzo la
+     * avvicina a zero: piu' uno era caro, meno "male" sembrava. Sotto zero
+     * non c'e' nessuna efficienza da misurare, quindi resta la resa cosi'
+     * com'e' e chi rende meno del rimpiazzo finisce in fondo comunque.
+     */
+    resaPerCredito(p) {
+      const punti = this.resaAttesa(p);
+      if (punti <= 0) return punti;
+      return punti / Math.max(1, this.mercato(p) || 1);
     }
 
     // -------------------------------------------------------- stato squadra
@@ -221,7 +531,7 @@
 
       const spent = ROLES.reduce((s, r) => s + spentByRole[r], 0);
       const b = num(team && team.budget);
-      const residuo = b !== null ? b : this.budgetTotal - spent;
+      const residuo = b !== null ? b : this.budgetDi(team) - spent;
       const slotMancanti = ROLES.reduce(
         (s, r) => s + Math.max(0, this.roleLimits[r] - countByRole[r]), 0);
 
@@ -240,10 +550,11 @@
     analyzeTeam(team, strategyKey) {
       const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
       const st = this.rosterState(team);
+      const budget = this.budgetDi(team);
       const out = {};
 
       ROLES.forEach((role) => {
-        const actual = (st.spentByRole[role] / this.budgetTotal) * 100;
+        const actual = (st.spentByRole[role] / budget) * 100;
         const target = strat[role] * 100;
         const dev = actual - target;
         out[role] = {
@@ -253,9 +564,9 @@
           actual: round1(actual),
           target: round1(target),
           deviation: round1(dev),
-          budgetTarget: Math.round(this.budgetTotal * strat[role]),
+          budgetTarget: Math.round(budget * strat[role]),
           budgetResiduoRuolo: Math.max(
-            0, Math.round(this.budgetTotal * strat[role] - st.spentByRole[role])),
+            0, Math.round(budget * strat[role] - st.spentByRole[role])),
           status: Math.abs(dev) < 2 ? 'in linea'
                 : dev < 0 ? 'sotto il target' : 'sopra il target',
           severity: Math.abs(dev) < 2 ? 'ok'
@@ -415,9 +726,11 @@
 
       const candidati = availables
         .filter((p) => !role || normRole(p.role) === role)
-        .filter((p) => maxSpesa === null || num(p.pma) === null || p.pma <= maxSpesa)
-        // Chi non gioca non rende, per quanto costi poco.
-        .filter((p) => (p.expectedTitolarita || 0) >= 50);
+        .filter((p) => maxSpesa === null || num(p.pma) === null || this.mercato(p) <= maxSpesa)
+        // Chi non gioca non rende, per quanto costi poco. La titolarita'
+        // e' quella corretta con le presenze reali: chi era dato per
+        // riserva ma gioca sempre deve poter comparire, e viceversa.
+        .filter((p) => this.titolaritaStimata(p) >= 0.5);
 
       const conv = new Map();
       candidati.forEach((p) => conv.set(p.id, this.convenienza(p, candidati)));
@@ -443,7 +756,7 @@
       return availables
         .filter((p) => normRole(p.role) === r && p.qualityScore !== undefined)
         .filter((p) => maxSpesa === null || maxSpesa === undefined ||
-                       num(p.pma) === null || p.pma <= maxSpesa)
+                       num(p.pma) === null || this.mercato(p) <= maxSpesa)
         .sort((a, b) => (b.qualityScore || 0) - (a.qualityScore || 0))
         .slice(0, limit || 6)
         .map((p) => this.playerCard(p));
@@ -486,12 +799,12 @@
         presenze(p) >= 40 &&                     // sotto, il dato non regge
         (p.fmStorica - p.mvStorica) >= 0.15 &&   // apporto non trascurabile
         (p.pfc != null ? p.pfc : p.pma) > 0 &&
-        (p.pfc != null ? p.pfc : p.pma) <= 15    // sopra, il bonus lo stai pagando
+        this.prezzoLega(p.pfc != null ? p.pfc : p.pma) <= 15   // sopra, il bonus lo stai pagando
       );
 
       const conValore = candidati.map((p) => {
         const apporto = p.fmStorica - p.mvStorica;
-        const prezzo = p.pfc != null ? p.pfc : p.pma;
+        const prezzo = Math.max(1, this.prezzoLega(p.pfc != null ? p.pfc : p.pma));
         return {
           p: p,
           apporto: apporto,
@@ -842,28 +1155,25 @@
      * invece che come punteggio 0-100, che non dice nulla da solo.
      */
     convenienza(player, availables) {
-      const stima = (p) => {
-        const fm = p.fmStorica || p.expectedFantamedia || 6;
-        const tit = (p.expectedTitolarita || 0) / 100;
-        /**
-         * Temperamento per campione piccolo.
-         *
-         * Una fantamedia costruita su 5 partite fortunate batte quella di
-         * chi ne ha giocate 120, e senza correzione i giocatori senza
-         * storico occupano tutte le prime posizioni. Si tira la stima
-         * verso il 6 di base in proporzione a quanto poco sappiamo:
-         * con 50+ presenze si crede al dato per intero, con 0 non gli si
-         * crede affatto. E' un accorgimento standard, non una penalita'
-         * arbitraria: la media di pochi dati va regredita verso la media
-         * generale.
-         */
-        const n = presenzeTotali(p);
-        const fiducia = Math.min(1, n / PRESENZE_AFFIDABILI);
-        const fmTemperata = 6 + (fm - 6) * fiducia;
-        return (fmTemperata - 6) * 38 * tit;
-      };
+      /**
+       * La resa si misura rispetto al GIOCATORE DI RIMPIAZZO del ruolo
+       * (vedi rimpiazzo() e resaAttesa()), non rispetto al 6.
+       *
+       * Fino alla versione precedente lo zero era il 6 fisso per tutti i
+       * ruoli. Conseguenze, verificate sul listone: tutti i 38 portieri con
+       * uno storico risultavano in perdita e i 26 senza storico valevano 0,
+       * quindi i primi consigliati erano terzi portieri mai visti in Serie
+       * A; e per chi aveva resa negativa dividere per il prezzo migliorava
+       * il numero, cosi' un portiere da 37 crediti figurava piu' efficiente
+       * di uno da 1 che rendeva lo stesso.
+       *
+       * Resta il temperamento per campione piccolo: la media di poche
+       * partite va regredita verso il valore tipico. Solo che il valore
+       * tipico adesso e' quello del ruolo, non il 6.
+       */
+      const stima = (p) => this.resaAttesa(p);
       const punti = stima(player);
-      const perCredito = punti / Math.max(1, player.pma || 1);
+      const perCredito = this.resaPerCredito(player);
 
       const role = normRole(player.role);
       /**
@@ -880,12 +1190,29 @@
         (p) => normRole(p.role) === role && !p.inseritoManualmente);
       const posPunti = pari.filter((p) => stima(p) > punti).length + 1;
       const posEff = pari.filter((p) =>
-        stima(p) / Math.max(1, p.pma || 1) > perCredito).length + 1;
+        this.resaPerCredito(p) > perCredito).length + 1;
 
       const aff = affidabilita(player);
       return {
         puntiAttesi: round1(punti),
         puntiPerCredito: round2(perCredito),
+        // Su cosa poggia la stima: stagione in corso e titolarita' corretta.
+        stagioneInCorso: (() => {
+          const g = this.giornateGiocate();
+          if (g < 1) return null;
+          const pv = Number(player.pv_2627) || 0;
+          return {
+            presenze: pv, giornate: g,
+            fantamedia: pv > 0 ? num(player.fm_2627) : null,
+            titolaritaAttesa: Math.round(Number(player.expectedTitolarita) || 0),
+            titolaritaStimata: Math.round(this.titolaritaStimata(player) * 100),
+            testo: 'quest\'anno ' + pv + '/' + g + ' presenze' +
+                   (pv > 0 && num(player.fm_2627) !== null ? ', fantamedia ' + player.fm_2627 : '')
+          };
+        })(),
+        // Punti a stagione in piu' di un giocatore preso a 1 credito.
+        riferimento: 'rimpiazzo ' + role + ' (fantamedia ' +
+                     round2(this.rimpiazzo(role)) + ')',
         posizionePerResa: posPunti,
         posizionePerEfficienza: posEff,
         suQuanti: pari.length,
@@ -920,7 +1247,11 @@
     mercatoPerReparto(allTeams, allPlayers, mineKey) {
       const pool = allPlayers || [];
       const listino = new Map();
-      pool.forEach((p) => { if (p.pma != null) listino.set(p.id, p.pma); });
+      // Listino nella scala di QUESTA lega: nella 1996 circolano meno crediti,
+      // e confrontare i prezzi pagati col listino nazionale faceva leggere
+      // come "il mercato li sta regalando" quello che era solo una lega con
+      // meno soldi.
+      pool.forEach((p) => { if (p.pma != null) listino.set(p.id, this.mercato(p)); });
 
       const perRuolo = {};
       ROLES.forEach((r) => { perRuolo[r] = { pagato: 0, listino: 0, n: 0 }; });
@@ -1064,7 +1395,7 @@
           .filter((p) => normRole(p.role) === r && (p.expectedTitolarita || 0) >= 50)
           .sort((a, b) => (b.pma || 0) - (a.pma || 0));
         const fascia = candidati.slice(0, Math.max(1, titolari * squadre));
-        const med = titolari > 0 ? mediana(fascia.map((p) => p.pma || 1)) : 0;
+        const med = titolari > 0 ? mediana(fascia.map((p) => this.mercato(p) || 1)) : 0;
 
         const costo = titolari * med + panchina * this.prezzoPanchinaro;
         dettaglio[r] = round1(costo);
@@ -1156,7 +1487,15 @@
         const tuttiDelRuolo = perRuolo[role];
         // Solo giocatori con un prezzo vero: sotto gli 8 crediti non si
         // puo' "strapagare" nulla in modo significativo.
-        const cari = tuttiDelRuolo.filter((p) => (p.pma || 0) >= 8);
+        //
+        // E solo giocatori di cui si sa qualcosa: chi non ha storico ha resa
+        // stimata 0 PER MANCANZA DI DATI, non perche' renda poco. Lasciarli
+        // dentro riempiva l'elenco di nuovi arrivi (Vicario, Ramos, Mora),
+        // segnalati come strapagati senza che ci fosse un solo numero a
+        // dirlo. Su di loro l'agente tace: il giudizio resta a chi li conosce.
+        const cari = tuttiDelRuolo.filter((p) =>
+          (this.mercato(p) || 0) >= 8 &&
+          this.campione(p).campioneEfficace >= PRESENZE_MINIME);
         if (cari.length < 6) return;
 
         const resa = new Map();
@@ -1196,6 +1535,8 @@
         const c = this.playerCard(x.p);
         c.perche = x.pp + 'o piu\' caro fra i ' + x.tot + ' ' + x.p.role +
                    ' sopra gli 8 crediti, ma solo ' + x.pr + 'o per resa attesa';
+        c.posizionePrezzo = x.pp;
+        c.posizioneResa = x.pr;
         return c;
       });
     }
@@ -1221,7 +1562,7 @@
          */
         convenienzaListone: p.valueScore,
         verdetto: this.verdetto(p),
-        prezzoMercato: p.pma,
+        prezzoMercato: this.mercato(p),
         /**
          * In asta si offrono solo interi da 1 in su: un tetto tipo "0.7"
          * non e' un prezzo, si legge come un consiglio d'acquisto quando in
@@ -1313,7 +1654,7 @@
         tier: p.tierConsensus || p.tier,
         titolarita: p.expectedTitolarita,
         verdetto: this.verdetto(p),
-        prezzoMercato: p.pma
+        prezzoMercato: this.mercato(p)
       }));
       out.altriNonMostrati = Math.max(0, tutti.length - max);
       return out;
@@ -1376,11 +1717,22 @@
       return v;
     }
 
+    /**
+     * Tetto di prezzo nella lega in uso.
+     *
+     * Due correzioni rispetto al listone: senza modificatore si torna a pfc
+     * (maxPriceLega e' gia' gonfiato per il modificatore), e in ogni caso il
+     * valore viene riportato ai crediti che circolano davvero in questa
+     * lega (prezzoLega). A Fantalissandria la scala e' 1 e non cambia nulla.
+     */
     tettoPrezzo(p) {
+      let t;
       if (!this.defenseModifier) {
-        return (p.pfc !== undefined && p.pfc !== null) ? p.pfc : p.pma;
+        t = (p.pfc !== undefined && p.pfc !== null) ? p.pfc : p.pma;
+      } else {
+        t = p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
       }
-      return p.maxPriceLega !== undefined ? p.maxPriceLega : p.pfc;
+      return this.prezzoLega(t);
     }
 
     /** Frase secca da leggere in asta. */
@@ -1397,7 +1749,7 @@
             ? ' (' + p.leagueAdjustNote + ')' : '') + '.');
       }
       if (p.pma !== null && p.pma !== undefined) {
-        parti.push('Il mercato lo paga intorno a ' + p.pma + '.');
+        parti.push('Il mercato lo paga intorno a ' + this.mercato(p) + '.');
       }
       if (this.defenseModifier && p.modBargain) parti.push(p.modBargainNote + '.');
       const avvC = avvisoCampione(p);
@@ -1463,18 +1815,23 @@
        * renderebbe speso altrove: oltre quella soglia conviene fermarsi.
        * Non e' un divieto, e' un promemoria nel momento del rilancio.
        */
-      const sogliaRendimento = (role === 'ATT' && offerta > 115)
-        ? 'Sopra i ~115 crediti il rendimento marginale di una punta scende ' +
+      // La soglia e' espressa sui prezzi di listino: va riportata alla lega.
+      const soglia115 = Math.round(this.prezzoLega(115));
+      const sogliaRendimento = (role === 'ATT' && offerta > soglia115)
+        ? 'Sopra i ~' + soglia115 + ' crediti il rendimento marginale di una punta scende ' +
           'sotto quello di rinforzare un altro reparto. Puoi arrivarci, ma ' +
           'sappi che ogni credito oltre quella soglia rende poco.'
         : null;
 
       /**
        * I listoni non conoscono il modificatore difesa. Un giocatore che fa
-       * salire di scaglione porta un bonus fisso OGNI giornata: mezzo punto
-       * per 38 giornate sono ~19 punti, che a scontri diretti valgono circa
-       * 2.5 punti di classifica. Su di lui conviene spingersi oltre il tetto
-       * nominale, e l'agente deve dirlo.
+       * salire di scaglione porta mezzo punto in piu' nelle giornate in cui
+       * il modificatore scatta: su 38 giornate sono AL MASSIMO ~19 punti
+       * (il modificatore non scatta sempre: serve la media, e servono 4
+       * difensori in campo). Su di lui conviene spingersi oltre il tetto
+       * nominale, e l'agente deve dirlo. Da ricordare che il vantaggio in
+       * classifica esiste solo rispetto a chi quello scaglione non lo
+       * raggiunge: se lo prendono tutti, non sposta nulla.
        */
       let premioModificatore = null;
       let offertaConsigliata = offerta;
@@ -1534,9 +1891,16 @@
        * comporta QUESTA lega in particolare. Confrontando il prezzo pagato
        * storicamente per lo stesso tier/ruolo nelle aste di Fantalissandria
        * col listino di oggi, si vede se il tetto nazionale e' tarato bene
-       * per questa lega o no — ad esempio i difensori A- valgono qui 2.6x
-       * il listino nazionale, coerente col fatto che il modificatore li
-       * rivaluta rispetto a una lega generica che non ce l'ha.
+       * per questa lega o no.
+       *
+       * ATTENZIONE alle fasce da pochi crediti. Sui difensori A- il rapporto
+       * e' 2,6 volte il listino, ma NON e' un effetto del modificatore: nella
+       * Lega 1996, che il modificatore non ce l'ha, un A- costa 4 su 400
+       * crediti, a Fantalissandria 5 su 500 — la stessa quota. Quando il
+       * listino dice 2 e in asta si offrono solo interi da 1 in su, bastano
+       * un paio di rilanci a "raddoppiare" il prezzo. L'effetto vero del
+       * modificatore si vede sugli A+ (27 contro 13). Per questo sotto i 4
+       * crediti di listino il confronto viene accompagnato da un avviso.
        *
        * E' un'informazione, non una correzione automatica del tetto: la
        * baseline storica viene da appena 3 stagioni, campione piccolo per
@@ -1569,6 +1933,10 @@
            * quindi vale ma con meno certezza di quanto sembri da un
            * singolo numero.
            */
+          if (num(c.prezzoOggi) !== null && c.prezzoOggi < 4) {
+            correttivoLega += ' (su prezzi cosi\' bassi il rapporto dice poco: ' +
+              'bastano uno o due rilanci da 1 credito a spostarlo.)';
+          }
           const TIER_AMBIGUI = ['A', 'A-', 'A--', 'B+', 'B', 'B-'];
           if (TIER_AMBIGUI.includes(player.tierLaudantes)) {
             correttivoLega += ' (attenzione: ' + player.tierLaudantes +
@@ -1578,15 +1946,15 @@
         }
       }
 
-      if (role === 'ATT' && offertaConsigliata > 115) {
+      if (role === 'ATT' && offertaConsigliata > soglia115) {
         const pr = allTeams ? this.profiloRischio(team, allTeams, mineKey, allPlayers) : null;
         const inseguo = pr && pr.valutabile && pr.posizione === 'sotto la media';
         cautela = (cautela ? cautela + ' ' : '') +
           (inseguo
-            ? 'Sopra i 115 crediti il rendimento marginale cala, ma sei sotto la ' +
+            ? 'Sopra i ' + soglia115 + ' crediti il rendimento marginale cala, ma sei sotto la ' +
               'media della lega: a scontri diretti concentrare su un fuoriclasse ' +
               'e\' la scelta giusta.'
-            : 'Sopra i 115 crediti ogni credito in piu\' rende meno che altrove. ' +
+            : 'Sopra i ' + soglia115 + ' crediti ogni credito in piu\' rende meno che altrove. ' +
               'Se lo prendi comunque, sappi che stai comprando sicurezza, non resa: ' +
               'e su un bomber indiscusso puo\' essere il prezzo giusto.');
       }
@@ -1643,12 +2011,12 @@
          * non un giudizio sul giocatore. Va detto, altrimenti si perdono
          * occasioni su giovani che il mercato paga e che possono valere.
          */
-        perTettoBasso: (player.pma > 3 && offerta < player.pma * 0.4)
+        perTettoBasso: (this.mercato(player) > 3 && offerta < this.mercato(player) * 0.4)
           ? (presenzeTotali(player) < PRESENZE_MINIME
-              ? 'Tetto molto sotto il mercato (' + player.pma + ') perche\' non ' +
+              ? 'Tetto molto sotto il mercato (' + this.mercato(player) + ') perche\' non ' +
                 'ha storico utilizzabile in Serie A: il modello e\' prudente per ' +
                 'forza. Se lo conosci e credi valga di piu\', fidati del tuo occhio.'
-              : 'Tetto molto sotto il mercato (' + player.pma + '): i suoi numeri ' +
+              : 'Tetto molto sotto il mercato (' + this.mercato(player) + '): i suoi numeri ' +
                 'non giustificano il prezzo di listino.')
           : null,
         vincoloAttivo: vincolante.fonte,
@@ -1780,14 +2148,14 @@
 
       if (!players.length) {
         return { squadra: nome, strategy: 'NESSUN ACQUISTO', confidence: 0,
-                 acquisti: 0, repartiChiusi: [], quotePerRuolo: {}, residuo: this.budgetTotal,
+                 acquisti: 0, repartiChiusi: [], quotePerRuolo: {}, residuo: this.budgetDi(team),
                  storico: storico };
       }
 
       const st = this.rosterState(team);
       const quote = {};
       ROLES.forEach((r) => {
-        quote[r] = round1((st.spentByRole[r] / this.budgetTotal) * 100);
+        quote[r] = round1((st.spentByRole[r] / this.budgetDi(team)) * 100);
       });
 
       // Solo i reparti gia' completati sono confrontabili: sugli altri
@@ -2258,15 +2626,15 @@
         .join(' + ');
     }
 
-    pianoFasce(role, strategyKey) {
+    pianoFasce(role, strategyKey, team) {
       const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
-      const budgetRuolo = this.budgetTotal * strat[role];
+      const budgetRuolo = this.budgetDi(team) * strat[role];
       const titolari = this.slotTitolari[role] || this.roleLimits[role];
       const panchina = this.roleLimits[role] - titolari;
       const costoPanchina = panchina * this.prezzoPanchinaro;
       const residuo = Math.max(0, budgetRuolo - costoPanchina);
 
-      const prezzi = this.BASELINE_PREZZO_TIER[role] || {};
+      const prezzi = this.prezziTier(role);
       const { assegnazioni, residuoFinale } = this.assegnaFasce(residuo, titolari, prezzi);
       const descrizione = this.descriviFasce(assegnazioni);
 
@@ -2297,7 +2665,7 @@
      */
     prossimaFasciaConsigliata(team, strategyKey, role, allPlayers, inflazioneRuolo, scarsita) {
       const strat = this.strategies[strategyKey] || this.strategies.bilanciata;
-      const budgetRuolo = this.budgetTotal * strat[role];
+      const budgetRuolo = this.budgetDi(team) * strat[role];
       const titolariTot = this.slotTitolari[role] || this.roleLimits[role];
       const panchinaTot = this.roleLimits[role] - titolariTot;
 
@@ -2342,7 +2710,7 @@
        * usare il prezzo nazionale come se questa fosse un'asta qualunque.
        */
       const rapportoMercato = (inflazioneRuolo && inflazioneRuolo.rapporto) || 1;
-      const prezziBase = this.BASELINE_PREZZO_TIER[role] || {};
+      const prezziBase = this.prezziTier(role);
       const prezzi = {};
       Object.keys(prezziBase).forEach((t) => { prezzi[t] = round1(prezziBase[t] * rapportoMercato); });
 
@@ -2439,7 +2807,7 @@
 
       const st = this.rosterState(team);
       const mancanti = Math.max(0, this.roleLimits[fase] - st.countByRole[fase]);
-      const target = this.budgetTotal * strat[fase];
+      const target = this.budgetDi(team) * strat[fase];
       const speso = st.spentByRole[fase];
       const residuoRuolo = target - speso;
 
@@ -2460,7 +2828,7 @@
       const indice = ROLES.indexOf(fase);
       const daRiservare = ROLES.slice(indice + 1).reduce((s, r) => {
         const manc = Math.max(0, this.roleLimits[r] - st.countByRole[r]);
-        return s + (manc > 0 ? this.budgetTotal * strat[r] - st.spentByRole[r] : 0);
+        return s + (manc > 0 ? this.budgetDi(team) * strat[r] - st.spentByRole[r] : 0);
       }, 0);
 
       const disponibileDavvero = Math.max(0, st.residuo - Math.max(0, daRiservare));
@@ -2705,6 +3073,13 @@
     if (typeof cfg.modificatoreDifesa === 'boolean') {
       this.defenseModifier = cfg.modificatoreDifesa;
     }
+    // Imbattibilita' del portiere: +1 a Fantalissandria, assente nella 1996.
+    // Cambia la resa attesa dei portieri (bonusImbattibilita) e quindi anche
+    // il riferimento di rimpiazzo, che va ricalcolato.
+    if (typeof cfg.imbattibilita === 'boolean') {
+      this.punteggi.imbattibilita = cfg.imbattibilita ? (this._imbattibilitaBase || 1) : 0;
+    }
+    this._cacheRimpiazzo = null;
   };
 
   const getPlayers = () =>
@@ -2866,6 +3241,9 @@
     const r = report || getAIContext();
     const st = r.stato;
     const L = [];
+    // La mia squadra: serve per leggere il SUO budget di partenza, che nella
+    // Lega 1996 non coincide con la costante di lega.
+    const team = getTeams()[myTeamNum()] || null;
 
     L.push('ASTA IN CORSO — ' + new Date().toLocaleTimeString('it-IT'));
     L.push('');
@@ -2915,7 +3293,7 @@
     }
 
     L.push('LA MIA SQUADRA');
-    L.push('- Speso ' + st.spent + ' / ' + AI_AGENT.budgetTotal +
+    L.push('- Speso ' + st.spent + ' / ' + AI_AGENT.budgetDi(team) +
            ', residuo ' + st.residuo);
     L.push('- Slot da riempire: ' + st.slotMancanti +
            ' (' + st.creditiPerSlot + ' crediti a slot)');
@@ -2932,7 +3310,7 @@
     L.push('');
     L.push('PIANO FASCE (come dividere il budget di ruolo fra i titolari)');
     ROLES.forEach((role) => {
-      const pf = AI_AGENT.pianoFasce(role, currentStrategy());
+      const pf = AI_AGENT.pianoFasce(role, currentStrategy(), team);
       L.push('- ' + role + ': ' + pf.descrizione + ' (+ ' + pf.panchina +
              " panchinari a 1-2 crediti l'uno)");
       if (pf.residuoDopoTitolari > 3) {
@@ -2965,7 +3343,10 @@
       if (r.notaObiettivi) L.push('(' + r.notaObiettivi + ')');
       r.obiettivi.forEach((c) => {
         L.push(card(c));
-        if (c.convenienza && c.convenienza.sintesi) L.push('  ' + c.convenienza.sintesi);
+        if (c.convenienza && c.convenienza.sintesi) {
+          L.push('  ' + c.convenienza.sintesi +
+            (c.convenienza.stagioneInCorso ? ' | ' + c.convenienza.stagioneInCorso.testo : ''));
+        }
       });
     }
     // Passo di spesa: rischio di restare con crediti in mano
@@ -3065,9 +3446,15 @@
     if (r.trappole.length) {
       L.push('');
       L.push('DA NON RILANCIARE' + (r.fase && r.fase.fase ? ' — reparto ' + r.fase.fase : '') + ' (il mercato li paga piu di quanto valgano)');
+      // Si mostra il MOTIVO per cui sono segnalati: il confronto fra quanto
+      // costano e quanto rendono, entrambi come posizione nel reparto. Prima
+      // qui compariva "mercato X ma il tetto sensato e' Y", dove Y era il
+      // tetto del listone: un numero che non entra nella scelta e che in 14
+      // casi su 19 era piu' ALTO del mercato, cioe' la frase diceva il
+      // contrario di quello che voleva dire.
       r.trappole.forEach((c) =>
         L.push('- ' + c.nome + ' (' + c.ruolo + ') mercato ~' + c.prezzoMercato +
-               ' ma il tetto sensato e ' + c.prezzoMaxConsigliato));
+               ': ' + (c.perche || 'costa piu\' di quanto renda')));
     }
 
     L.push('');

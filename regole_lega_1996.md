@@ -10,14 +10,24 @@
 
 ---
 
-## 0. In una riga
+## 0. In breve
 
-Identica a Fantalissandria **tranne tre cose**: niente modificatore difesa,
-niente imbattibilità del portiere, e il turno di chiamata avanza rispetto a
-**chi ha comprato**, non a chi ha chiamato.
+Stesso impianto di Fantalissandria (8 squadre, scontri diretti, asta per
+reparto, stessi bonus e malus di base), ma con **sette differenze**:
 
-Sono poche differenze ma pesanti: la prima e la seconda cambiano quanto vale
-un difensore e un portiere, la terza tocca il calcolo del turno.
+1. niente **modificatore difesa** (§4);
+2. niente **imbattibilità** del portiere (§3);
+3. niente **capitano** (§5);
+4. rosa da **24** giocatori, con **7 difensori** invece di 8 (§1);
+5. budget di **400 + residuo** dell'anno prima, diverso per squadra (§1);
+6. il turno di chiamata avanza rispetto a **chi ha comprato** (§8);
+7. le **riconferme**: fino a 3 giocatori trattenuti dall'anno prima (§8).
+
+Le prime due cambiano quanto vale un difensore e un portiere; la quinta
+cambia **tutti i prezzi**, perché in lega circolano meno crediti (§9).
+
+*(Fino al 16 novembre 2026 questo paragrafo parlava di "tre differenze":
+era rimasto alla prima stesura, prima che emergessero le altre.)*
 
 ---
 
@@ -197,7 +207,8 @@ Con 11 titolari da 6 si arriva esattamente a 66, cioè un gol.
 
 *Fonte: Polibio, 10 settembre 2026*
 
-Identica a Fantalissandria in tutto **tranne il turno di chiamata**.
+Identica a Fantalissandria in tutto **tranne il turno di chiamata e le
+riconferme**.
 
 - L'asta procede **per reparto in sequenza**: prima tutti i portieri,
   poi i difensori, poi i centrocampisti, poi gli attaccanti
@@ -206,8 +217,8 @@ Identica a Fantalissandria in tutto **tranne il turno di chiamata**.
 - Chi chiama apre quasi sempre **a 1 credito**
 - Il **rilancio è libero**: non segue nessun ordine
 - Nessun tetto massimo per singolo giocatore, nessuna spesa minima per
-  reparto. L'unico vincolo è comprare esattamente 25 giocatori nella
-  composizione 3/8/8/6
+  reparto. L'unico vincolo è comprare esattamente **24** giocatori nella
+  composizione **3/7/8/6**
 - Registro gli acquisti di **tutte e 8 le squadre**
 
 ### LA DIFFERENZA: il turno di chiamata
@@ -226,6 +237,21 @@ fini dell'app — la prima chiamata di ogni reparto può non essere indicata.)*
 **Conseguenza tattica**, non regola: qui aggiudicarsi un giocatore ha un
 costo in più, perché si cede la chiamata al proprio vicino d'ordine. Chi
 compra molto passa sistematicamente il turno alla stessa squadra.
+
+### Le riconferme
+
+*Fonte: Polibio, settembre 2026 — a Fantalissandria non esistono.*
+
+- Ogni squadra può trattenere **fino a 3 giocatori** della stagione
+  precedente, **al massimo uno per ruolo**, al **prezzo pagato l'anno prima**.
+- Si dichiarano **reparto per reparto**, subito prima che cominci l'asta di
+  quel reparto, non tutte insieme a inizio serata.
+- Occupano uno slot di rosa e scalano il budget come un acquisto normale.
+
+Sono prezzi **fuori mercato**: si riconferma chi era costato poco e ha reso
+molto. Nell'app sono marcate (`riconferma: true`) e restano fuori dal calcolo
+dell'inflazione per reparto, altrimenti un A+ a 3 crediti sembrerebbe un
+affare d'asta.
 
 ---
 
@@ -257,9 +283,32 @@ diventano: POR ~26, DIF ~46, CEN ~100, ATT ~246.
 | ATT | 270–283 | 285–303 | **+18** |
 
 Cambia **solo la difesa**, e di rimbalzo l'attacco: 18 crediti si spostano da
-un reparto all'altro. Portieri e centrocampo restano identici. È una misura
-indipendente di quanto valga il modificatore, coerente con la stima di
-10-25 crediti fatta nel documento di Fantalissandria.
+un reparto all'altro. Portieri e centrocampo restano identici.
+
+*(Corretto il 16 novembre 2026. Qui si leggeva che i 18 crediti erano una
+"misura indipendente" coerente con la stima di 10-25 crediti del documento di
+Fantalissandria. Non lo sono: i 10-25 crediti sono il costo del **primo
+scalino** del modificatore, i 18 sono quanto Laudantes sposta **in tutto** sul
+reparto. Che i numeri si somiglino è una coincidenza, non una conferma.)*
+
+### La scala dei prezzi: qui tutto costa circa il 18% in meno
+
+*Aggiunto il 16 novembre 2026.*
+
+I prezzi del listone (`pma`, `pfc`) sono tarati su una lega a 8 da 500
+crediti: i 200 giocatori migliori sommano 4049 crediti di `pfc`, contro i
+4000 in circolazione a Fantalissandria. Nella 1996 i crediti sono **3290**
+(la somma dei budget di §1) per 192 slot.
+
+Poiché ogni slot costa almeno 1 credito, quello che conta è il resto:
+(3290 − 192) / (4000 − 200) = **0,815**. Un giocatore da 100 di listino qui
+vale circa 82; uno da 1 resta a 1.
+
+L'agente applica questa scala da solo (`AI_AGENT.scalaPrezzi()`) a prezzi di
+mercato, tetti e fasce. Prima non lo faceva, e i tetti consigliati nella 1996
+erano più alti di circa il 20% di quanto la lega potesse spendere. **I prezzi
+riportati nelle tabelle di questo documento sono quelli di listino, non
+riscalati.**
 
 ### Prezzi per slot in difesa
 
@@ -327,6 +376,11 @@ Senza imbattibilità restano il rigore parato (raro) e il gol subito (−1).
 I due portieri fra i `modBargain` hanno apporto bonus −1,33 (Falcone) e
 −1,21 (Caprile): bilancio in perdita.
 
+La fantamedia del listone **non contiene l'imbattibilità** (verificato: è voto
+meno gol subiti, più rigori parati, meno cartellini). Quindi per questa lega
+il dato dei portieri è già quello giusto; è a Fantalissandria che va
+corretto verso l'alto.
+
 Nota: Laudantes tiene comunque il budget portieri invariato a 27-35 crediti.
 Il valore si sposta dal premiare il clean sheet all'evitare i gol subiti,
 quindi un portiere di una difesa solida vale ancora — per una ragione
@@ -367,11 +421,10 @@ pochi fuoriclasse; se è la più forte conviene livellare.
 
 ## 11. Punti ancora aperti
 
-1. **Verbali delle aste passate**: in arrivo. Senza, i profili degli
-   avversari partono vuoti e si costruiscono con le note durante l'asta —
-   funziona, ma si perde il vantaggio che a Fantalissandria derivava dallo
-   storico.
-2. Ordine di estrazione delle chiamate: si conoscerà solo al momento.
+1. ~~Verbali delle aste passate~~ — **chiuso**: arrivati l'11 settembre 2026
+   (2023-24, 2024-25, 2025-26) e confluiti in `storico_1996.js`.
+2. ~~Ordine di estrazione~~ — **chiuso**: l'asta 2026/27 si è tenuta il 12
+   settembre 2026.
 3. **Minimi di panchina** con la rosa da 24 e 7 difensori: i valori riportati
    in §2 sono quelli di Fantalissandria e vanno confermati.
 
