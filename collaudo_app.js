@@ -457,6 +457,94 @@ while (acquisti < MAX) {
   }
 }
 
+// ---------------------------------------------------------------- 10: mercato di riparazione
+// Ad asta conclusa: svincolo, acquisto, scambio, i rifiuti dovuti, e poi
+// l'annullamento di tutto, che deve riportare esattamente allo stato di prima.
+let proveRiparazione = 0;
+(function collaudoRiparazione() {
+  const foto = () => JSON.stringify(dentro('JSON.parse(JSON.stringify({t: teams, l: riparazioneLog}))'));
+  const conti = (dove) => {
+    const t = stato().teams;
+    for (let i = 1; i <= 8; i++) {
+      esigi(t[i].budget + t[i].spent === t[i].budgetIniziale && t[i].budget >= 0,
+        'riparazione: contabilita\' rotta', `Squadra ${i} dopo ${dove}: ${t[i].spent}+${t[i].budget} != ${t[i].budgetIniziale}`);
+      ['POR', 'DIF', 'CEN', 'ATT'].forEach((r) => esigi(
+        t[i].players.filter((p) => p.role === r).length <= LIMITI[r],
+        'riparazione: reparto oltre il limite', `Squadra ${i}, ${r}, dopo ${dove}`));
+    }
+    const ids = [];
+    for (let i = 1; i <= 8; i++) t[i].players.forEach((p) => ids.push(String(p.id)));
+    esigi(new Set(ids).size === ids.length, 'riparazione: giocatore in due rose', `dopo ${dove}`);
+  };
+  const t0 = stato().teams;
+  if (t0[1].players.length < PER_ROSA || t0[2].players.length < PER_ROSA) return;
+  const prima = foto();
+
+  // regola di rimborso: meta' arrotondata per eccesso dove la lega ne ha una
+  if (dentro('!!lega().svincolo')) {
+    esigi(dentro('rimborsoPrevisto({price: 7}, false)') === 4 && dentro('rimborsoPrevisto({price: 8}, false)') === 4 &&
+          dentro('rimborsoPrevisto({price: 1}, false)') === 1 && dentro('rimborsoPrevisto({price: 7}, true)') === 7,
+      'riparazione: rimborso previsto sbagliato', '7 deve rendere 4, 8 rende 4, 1 rende 1, fuori Serie A tutto');
+    proveRiparazione++;
+  } else {
+    esigi(dentro('rimborsoPrevisto({price: 7}, false)') === null, 'riparazione: rimborso inventato', 'senza regola non si propone nulla');
+    proveRiparazione++;
+  }
+
+  // svincolo a meta' prezzo
+  const esce = t0[1].players.find((p) => p.role === 'ATT');
+  const meta = Math.floor(esce.price / 2);
+  let r = dentro(`svincolaGiocatore(1, ${JSON.stringify(esce.id)}, ${meta})`);
+  esigi(r.ok && stato().teams[1].budget === t0[1].budget + meta, 'riparazione: svincolo', JSON.stringify(r));
+  conti('svincolo'); proveRiparazione++;
+  // rimborso superiore al prezzo: rifiutato
+  const altro = stato().teams[1].players.find((p) => p.role === 'CEN');
+  r = dentro(`svincolaGiocatore(1, ${JSON.stringify(altro.id)}, ${altro.price + 1})`);
+  esigi(!r.ok, 'riparazione: rimborso oltre il prezzo accettato', altro.name); proveRiparazione++;
+
+  // acquisto di un libero nello slot aperto
+  const liberoId = dentro(`(function(){const presi=new Set();for(let k=1;k<=8;k++)teams[k].players.forEach(p=>presi.add(String(p.id)));const p=PLAYERS_DATA.find(p=>p.role==='ATT'&&!presi.has(String(p.id)));return p?p.id:null})()`);
+  if (liberoId !== null && stato().teams[1].budget >= 1) {
+    r = dentro(`acquistaInRiparazione(1, ${JSON.stringify(liberoId)}, 1)`);
+    esigi(r.ok, 'riparazione: acquisto', JSON.stringify(r)); conti('acquisto'); proveRiparazione++;
+    // lo stesso giocatore a un'altra squadra, e un acquisto a reparto pieno: rifiutati
+    r = dentro(`acquistaInRiparazione(2, ${JSON.stringify(liberoId)}, 1)`);
+    esigi(!r.ok, 'riparazione: doppione accettato', 'acquisto di un giocatore gia\' in rosa'); proveRiparazione++;
+    const altroLibero = dentro(`(function(){const presi=new Set();for(let k=1;k<=8;k++)teams[k].players.forEach(p=>presi.add(String(p.id)));const p=PLAYERS_DATA.find(p=>p.role==='ATT'&&!presi.has(String(p.id)));return p?p.id:null})()`);
+    if (altroLibero !== null) {
+      r = dentro(`acquistaInRiparazione(1, ${JSON.stringify(altroLibero)}, 1)`);
+      esigi(!r.ok, 'riparazione: acquisto a reparto pieno accettato', 'ATT'); proveRiparazione++;
+    }
+  }
+
+  // scambio 1 per 1 nello stesso ruolo, poi uno irregolare (1 per 0)
+  const a = stato().teams[1].players.find((p) => p.role === 'DIF');
+  const b = stato().teams[2].players.find((p) => p.role === 'DIF');
+  const v = dentro(`AI_AGENT.valutaScambio(teams[1], [${JSON.stringify(a.id)}], teams[2], [${JSON.stringify(b.id)}])`);
+  esigi(v.regolare && Math.abs(v.a.deltaRosa + v.b.deltaRosa) < 0.25, 'riparazione: valutazione scambio incoerente',
+    `quello che guadagna una rosa deve perderlo l'altra: ${v.a.deltaRosa} e ${v.b.deltaRosa}`);
+  r = dentro(`applicaScambio(1, [${JSON.stringify(a.id)}], 2, [${JSON.stringify(b.id)}], 0)`);
+  esigi(r.ok && stato().teams[2].players.some((p) => String(p.id) === String(a.id)), 'riparazione: scambio', JSON.stringify(r));
+  conti('scambio'); proveRiparazione++;
+  const c = stato().teams[1].players.find((p) => p.role === 'CEN');
+  r = dentro(`applicaScambio(1, [${JSON.stringify(c.id)}], 2, [], 0)`);
+  esigi(!r.ok, 'riparazione: scambio irregolare accettato', 'la squadra 2 andrebbe oltre il limite di CEN'); proveRiparazione++;
+
+  // il pannello si disegna senza errori
+  try { dentro('toggleRiparazione(); renderRiparazione(); ripValutaScambio(); toggleRiparazione();'); proveRiparazione++; }
+  catch (e) { esigi(false, 'riparazione: il pannello va in errore', e.message); }
+
+  // annullando tutto si torna esattamente a prima
+  let giri = 0;
+  while (dentro('riparazioneLog.length') > 0 && giri++ < 10) {
+    r = dentro('annullaRiparazione()');
+    if (!r.ok) { esigi(false, 'riparazione: annullamento rifiutato', r.errore); break; }
+    conti('annullamento');
+  }
+  esigi(foto() === prima, 'riparazione: annullare non riporta allo stato di prima', '');
+  proveRiparazione++;
+})();
+
 // ---------------------------------------------------------------- esito
 const fine = stato();
 let completi = 0;
@@ -471,6 +559,7 @@ console.log(`Rose complete (${PER_ROSA}/${PER_ROSA}): ${completi}/8`);
 console.log(`Invarianti controllate a ogni passo: 7`);
 console.log(`Ricaricamenti simulati e ripresi: ${ricaricamenti}`);
 console.log(`Doppioni tentati e respinti: ${doppioniTentati}`);
+console.log(`Prove sul mercato di riparazione superate: ${proveRiparazione}`);
 console.log(`Chiamanti ripetuti senza motivo: ${ripetizioniIngiustificate}`);
 console.log('');
 

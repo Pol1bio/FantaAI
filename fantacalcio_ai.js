@@ -17,6 +17,11 @@
 //  - la resa attesa tiene conto anche della STAGIONE IN CORSO (fantamedia
 //    e presenze 2026/27), non solo delle tre passate: vedi campione() e
 //    titolaritaStimata(). Serve per scambi e mercato di gennaio.
+//
+// Versione 3.9.9.51:
+//  - i parametri della stima sono tarati sui dati (vedi FIDUCIA_K);
+//  - MERCATO DI RIPARAZIONE E SCAMBI: analisiRosa(), sostituzioni(),
+//    valutaScambio(), tutte in punti da qui a fine campionato.
 // =============================================================================
 
 (function () {
@@ -132,10 +137,44 @@
 
   /**
    * Quanto "vale", in giornate, la stima di titolarita' fatta a settembre.
-   * Mezzo campionato: all'11a giornata le presenze reali pesano il 37%,
-   * a fine andata il 50%, a fine stagione i due terzi.
+   * Cinque giornate: all'11a le presenze reali pesano gia' per due terzi.
+   * (Era 19: la verifica sui dati ha detto che era troppo, vedi sotto.)
    */
-  const GIORNATE_PRIOR_TITOLARITA = 19;
+  const GIORNATE_PRIOR_TITOLARITA = 5;
+
+  /**
+   * TARATURA SUI DATI (16 novembre 2026) — non piu' scelte a occhio.
+   *
+   * I tre numeri di questa sezione sono stati provati sullo storico:
+   *
+   *  1. FIDUCIA NEL CAMPIONE. Prevedendo la fantamedia 2025/26 dalle due
+   *     stagioni precedenti (193 giocatori), l'errore tipico e' 0,42 senza
+   *     alcun temperamento, 0,39 con la regola di prima (fiducia piena a 50
+   *     presenze, tirando verso il quartile basso) e 0,35 con quella di
+   *     adesso: fiducia = n / (n + 25), tirando verso la MEDIANA del ruolo.
+   *     Stesso verso, piu' debole, sulle altre due prove (stagione in corso
+   *     dalle tre precedenti; giornate 6-11 dalle prime 5 piu' lo storico).
+   *     Il quartile basso resta lo ZERO della scala (il rimpiazzo), ma come
+   *     ipotesi su un giocatore poco noto era troppo pessimista.
+   *
+   *  2. PESO DELLA STAGIONE IN CORSO = 2. Prevedendo le giornate 6-11 da
+   *     storico piu' prime 5 giornate (246 giocatori), l'errore e' minimo
+   *     fra 2 e 3 e risale oltre 4. Per chi ha gia' uno storico le partite
+   *     di quest'anno aggiungono poco (ottimo fra 1 e 2); per i 63 senza
+   *     storico sono decisive (errore da 0,99 a 0,89).
+   *
+   *  3. TITOLARITA': la previsione di settembre vale 5 giornate, non 19.
+   *     Prevedendo le presenze delle giornate 6-11 (531 giocatori) l'errore
+   *     e' 0,375 con la sola previsione, 0,340 con le sole presenze reali,
+   *     0,312 combinandole con peso 2-5. A 19, il valore di prima, era
+   *     0,339. La previsione di settembre era ottimista: chi era dato
+   *     all'80-89% ha giocato il 68% delle partite, chi al 50-59% il 27%.
+   *
+   * LIMITI: il punto 3 e' misurato su 6 giornate di orizzonte, non su un
+   * girone; i punti 1 e 2 su campioni di 200-250 giocatori. Lo script e'
+   * backtest_parametri.js: va rifatto girare quando arrivano dati nuovi.
+   */
+  const FIDUCIA_K = 25;
   const round1 = (v) => Math.round(v * 10) / 10;
   const round2 = (v) => Math.round(v * 100) / 100;
 
@@ -446,31 +485,35 @@
       const attesa = Math.max(0, Math.min(1, (Number(p && p.expectedTitolarita) || 0) / 100));
       const g = this.giornateGiocate();
       if (g < 3) return attesa;
+      // Correzione a mano: "le partite saltate erano un infortunio, ora e'
+      // rientrato". Le presenze non lo possono sapere; chi segue il
+      // giocatore si'. In quel caso vale la previsione di settembre.
+      if (p && this.fiduciaManuale()[p.id]) return attesa;
       const reale = Math.max(0, Math.min(1, (Number(p.pv_2627) || 0) / g));
       return (GIORNATE_PRIOR_TITOLARITA * attesa + g * reale) / (GIORNATE_PRIOR_TITOLARITA + g);
     }
 
     /**
-     * IL GIOCATORE DI RIMPIAZZO, per ruolo.
+     * I DUE RIFERIMENTI DI RUOLO: il rimpiazzo e il giocatore tipico.
      *
-     * E' la fantamedia di chi si prende comunque a 1 credito: il quartile
-     * basso fra i giocatori del ruolo con uno storico minimo. Serve a due
-     * cose in convenienza():
+     *  - RIMPIAZZO (quartile basso della fantamedia fra chi ha uno storico
+     *    minimo): e' chi si prende comunque a 1 credito, ed e' lo ZERO della
+     *    scala. Un giocatore vale per quanto rende IN PIU' di quello che
+     *    avrei avuto gratis, non per quanto sta sopra il 6. Col 6 fisso
+     *    tutti i portieri (fantamedia intorno a 5, per via dei gol subiti)
+     *    risultavano in perdita, e 81 difensori su 188 pure.
      *
-     *  - e' lo ZERO della scala. Un giocatore vale per quanto rende IN PIU'
-     *    di quello che avrei avuto gratis, non per quanto sta sopra il 6.
-     *    Col 6 fisso tutti i portieri (fantamedia intorno a 5, per via dei
-     *    gol subiti) risultavano in perdita, e 81 difensori su 188 pure;
-     *  - e' il valore verso cui si tira chi ha poche presenze. Di uno
-     *    sconosciuto l'ipotesi prudente e' "come un rimpiazzo", non "da 6":
-     *    per un portiere da 6 di fantamedia vorrebbe dire fuoriclasse.
+     *  - TIPICO (mediana): e' il valore verso cui si tira chi ha poche
+     *    presenze. La verifica sui dati (vedi FIDUCIA_K) ha mostrato che
+     *    tirare verso la mediana prevede meglio che tirare verso il
+     *    quartile basso, anche per chi non ha nessuno storico.
      */
-    rimpiazzo(role) {
-      const r = normRole(role);
+    _riferimenti() {
       const lista = getPlayers();
       const firma = lista.length + '|' + (this.punteggi.imbattibilita || 0);
-      if (!this._cacheRimpiazzo || this._cacheRimpiazzo.firma !== firma) {
-        const perRuolo = {};
+      if (!this._cacheRimpiazzo || this._cacheRimpiazzo.firma !== firma ||
+          this._cacheRimpiazzo.rif !== lista) {
+        const perRuolo = {}, tipico = {};
         ROLES.forEach((ru) => {
           const fms = lista
             .filter((p) => normRole(p.role) === ru && !p.inseritoManualmente &&
@@ -479,11 +522,34 @@
             .filter((v) => v !== null)
             .sort((a, b) => a - b);
           perRuolo[ru] = fms.length >= 8 ? fms[Math.floor(fms.length * 0.25)] : 6;
+          tipico[ru] = fms.length >= 8 ? fms[Math.floor(fms.length * 0.5)] : 6;
         });
-        this._cacheRimpiazzo = { firma: firma, perRuolo: perRuolo };
+        this._cacheRimpiazzo = { firma: firma, rif: lista, perRuolo: perRuolo, tipico: tipico };
       }
-      const v = this._cacheRimpiazzo.perRuolo[r];
+      return this._cacheRimpiazzo;
+    }
+
+    rimpiazzo(role) {
+      const v = this._riferimenti().perRuolo[normRole(role)];
       return v != null ? v : 6;
+    }
+
+    tipico(role) {
+      const v = this._riferimenti().tipico[normRole(role)];
+      return v != null ? v : 6;
+    }
+
+    /**
+     * Fantamedia attesa del giocatore: quella osservata, tirata verso il
+     * valore tipico del ruolo tanto piu' quanto meno partite ha alle spalle.
+     * Chi non ha nessuna partita in archivio vale il tipico.
+     */
+    fmAttesa(p) {
+      const tip = this.tipico(p.role);
+      const c = this.campione(p);
+      if (c.fm === null) return tip;
+      const fiducia = c.campioneEfficace / (c.campioneEfficace + FIDUCIA_K);
+      return tip + (c.fm - tip) * fiducia;
     }
 
     /**
@@ -491,16 +557,238 @@
      * Zero = vale quanto uno preso a 1 credito; negativo = rende meno.
      */
     resaAttesa(p) {
-      const base = this.rimpiazzo(p.role);
-      const c = this.campione(p);
-      const fm = c.fm;
-      const tit = this.titolaritaStimata(p);
-      if (fm === null) return 0;   // nessuna partita in archivio: ipotesi "rimpiazzo"
-      // La fiducia si misura sul campione davvero usato, con le partite di
-      // quest'anno che contano doppio come nella media.
-      const fiducia = Math.min(1, c.campioneEfficace / PRESENZE_AFFIDABILI);
-      const fmTemperata = base + (fm - base) * fiducia;
-      return (fmTemperata - base) * 38 * tit;
+      return (this.fmAttesa(p) - this.rimpiazzo(p.role)) * 38 * this.titolaritaStimata(p);
+    }
+
+    /** Giocatori segnati a mano come "titolare, era solo infortunato". */
+    fiduciaManuale() {
+      if (!this._fiduciaManuale) {
+        let m = {};
+        try {
+          const raw = localStorage.getItem('titolaritaManuale');
+          if (raw) m = JSON.parse(raw) || {};
+        } catch (e) { m = {}; }
+        this._fiduciaManuale = m;
+      }
+      return this._fiduciaManuale;
+    }
+
+    impostaFiduciaManuale(id, attiva) {
+      const m = this.fiduciaManuale();
+      if (attiva) m[id] = true; else delete m[id];
+      try { localStorage.setItem('titolaritaManuale', JSON.stringify(m)); }
+      catch (e) { /* resta in memoria */ }
+    }
+
+    // ============================================ MERCATO DI RIPARAZIONE E SCAMBI
+    //
+    // Tutto questo blocco ragiona in PUNTI DA QUI A FINE CAMPIONATO, sempre
+    // in piu' rispetto al rimpiazzo del ruolo. E' la stessa resa dell'asta,
+    // riportata alle giornate che restano: a gennaio un giocatore vale per
+    // le partite che deve ancora giocare, non per quelle gia' giocate.
+    //
+    // I prezzi NON entrano nelle valutazioni: quelli del listone sono di
+    // settembre. Entrano solo i crediti veri (residuo, rimborso da svincolo).
+
+    giornateResidue() {
+      return Math.max(0, 38 - this.giornateGiocate());
+    }
+
+    resaResidua(p) {
+      return this.resaAttesa(p) * this.giornateResidue() / 38;
+    }
+
+    /** La scheda di un giocatore in rosa: dato di rosa + stima dell'agente. */
+    schedaRosa(rec) {
+      const pieno = getPlayers().find((x) => String(x.id) === String(rec.id)) || null;
+      const base = pieno || { id: rec.id, name: rec.name, role: rec.role };
+      const role = normRole(rec.role || base.role);
+      const g = this.giornateGiocate();
+      const pv = pieno ? (Number(pieno.pv_2627) || 0) : 0;
+      const attesa = pieno ? Math.round(Number(pieno.expectedTitolarita) || 0) : 0;
+      const stimata = pieno ? Math.round(this.titolaritaStimata(pieno) * 100) : 0;
+      return {
+        id: rec.id,
+        nome: rec.name || base.name,
+        ruolo: role,
+        squadra: (pieno && (pieno.team_2627 || pieno.team)) || rec.squad || '',
+        prezzoPagato: num(rec.price) || 0,
+        riconferma: !!rec.riconferma,
+        nelListone: !!pieno,
+        presenze: pv,
+        giornate: g,
+        fmStagione: (pieno && pv > 0) ? num(pieno.fm_2627) : null,
+        fmAttesa: pieno ? round2(this.fmAttesa(pieno)) : null,
+        titolaritaAttesa: attesa,
+        titolaritaStimata: stimata,
+        fiduciaManuale: !!(pieno && this.fiduciaManuale()[pieno.id]),
+        // Ha giocato molto meno del previsto: panchina o infortunio? L'agente
+        // non lo sa, e lo dice invece di decidere in silenzio.
+        dubbioTitolarita: !!(pieno && g >= 3 && attesa >= 70 && pv / g < 0.6 &&
+                             !this.fiduciaManuale()[pieno.id]),
+        resaResidua: pieno ? round1(this.resaResidua(pieno)) : 0
+      };
+    }
+
+    /**
+     * LA FORMAZIONE MIGLIORE che la rosa puo' schierare, e quanto vale.
+     *
+     * Il valore di una rosa non e' la somma dei suoi 25 giocatori: contano
+     * gli undici che vanno in campo. Un terzo portiere forte non sposta
+     * niente; un quarto attaccante forte dipende dal modulo. Per questo
+     * svincoli e scambi si giudicano sull'undici, e la somma dell'intera
+     * rosa viene mostrata a parte come misura della profondita'.
+     *
+     * Con il modificatore difesa si considerano solo i moduli con almeno 4
+     * difensori, perche' e' la condizione per prenderlo.
+     */
+    migliorFormazione(schede) {
+      const MODULI = [[3, 4, 3], [3, 5, 2], [4, 3, 3], [4, 4, 2], [4, 5, 1], [5, 3, 2], [5, 4, 1]];
+      const perRuolo = { POR: [], DIF: [], CEN: [], ATT: [] };
+      schede.forEach((x) => { if (perRuolo[x.ruolo]) perRuolo[x.ruolo].push(x); });
+      ROLES.forEach((r) => perRuolo[r].sort((a, b) => b.resaResidua - a.resaResidua));
+      let migliore = null;
+      MODULI.forEach((m) => {
+        if (this.defenseModifier && m[0] < 4) return;
+        const serve = { POR: 1, DIF: m[0], CEN: m[1], ATT: m[2] };
+        if (ROLES.some((r) => perRuolo[r].length < serve[r])) return;
+        let valore = 0; const ids = [];
+        ROLES.forEach((r) => perRuolo[r].slice(0, serve[r]).forEach((x) => {
+          valore += x.resaResidua; ids.push(x.id);
+        }));
+        if (!migliore || valore > migliore.valore) {
+          migliore = { modulo: m.join('-'), valore: valore, ids: ids };
+        }
+      });
+      if (!migliore) return { modulo: null, valore: 0, ids: [], incompleta: true };
+      migliore.valore = round1(migliore.valore);
+      return migliore;
+    }
+
+    /** Fotografia di una rosa per il mercato di riparazione. */
+    analisiRosa(team) {
+      const schede = ((team && team.players) || []).map((r) => this.schedaRosa(r));
+      const xi = this.migliorFormazione(schede);
+      const inCampo = new Set(xi.ids.map(String));
+      schede.forEach((x) => { x.titolare = inCampo.has(String(x.id)); });
+      const ordine = { POR: 0, DIF: 1, CEN: 2, ATT: 3 };
+      schede.sort((a, b) => (ordine[a.ruolo] - ordine[b.ruolo]) || (b.resaResidua - a.resaResidua));
+      const conta = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+      schede.forEach((x) => { if (conta[x.ruolo] !== undefined) conta[x.ruolo]++; });
+      const slotLiberi = {};
+      ROLES.forEach((r) => { slotLiberi[r] = Math.max(0, (this.roleLimits[r] || 0) - conta[r]); });
+      return {
+        schede: schede,
+        modulo: xi.modulo,
+        valoreUndici: xi.valore,
+        valoreRosa: round1(schede.reduce((s, x) => s + x.resaResidua, 0)),
+        crediti: num(team && team.budget) || 0,
+        slotLiberi: slotLiberi,
+        giornateResidue: this.giornateResidue()
+      };
+    }
+
+    /** I giocatori del listone che nessuna squadra ha in rosa. */
+    liberi(role) {
+      const t = getTeams();
+      const presi = new Set();
+      Object.keys(t).forEach((k) => ((t[k] && t[k].players) || [])
+        .forEach((p) => presi.add(String(p.id))));
+      const r = role ? normRole(role) : null;
+      return getPlayers().filter((p) => !presi.has(String(p.id)) &&
+        (!r || normRole(p.role) === r));
+    }
+
+    /**
+     * COSA CAMBIEREI: per ogni ruolo, il libero migliore al posto del mio
+     * peggiore, finche' il cambio rende.
+     *
+     * Il guadagno e' calcolato SULL'UNDICI: sostituire una riserva con un
+     * giocatore che resterebbe riserva vale zero, e non viene proposto. Si
+     * propone un cambio per volta per coppia, senza combinarli: due cambi
+     * nello stesso ruolo possono valere meno della somma dei due guadagni.
+     */
+    sostituzioni(team, limite) {
+      const prima = this.analisiRosa(team);
+      const schede = prima.schede;
+      const out = [];
+      ROLES.forEach((role) => {
+        const miei = schede.filter((x) => x.ruolo === role)
+          .sort((a, b) => a.resaResidua - b.resaResidua).slice(0, 3);
+        const candidati = this.liberi(role)
+          .map((p) => this.schedaRosa({ id: p.id, name: p.name, role: p.role, price: 0 }))
+          .sort((a, b) => b.resaResidua - a.resaResidua).slice(0, 4);
+        miei.forEach((esce) => candidati.forEach((entra) => {
+          if (entra.resaResidua <= esce.resaResidua) return;
+          const dopo = schede.filter((x) => x.id !== esce.id).concat([entra]);
+          const guadagnoUndici = round1(this.migliorFormazione(dopo).valore - prima.valoreUndici);
+          if (guadagnoUndici < 2) return;
+          out.push({
+            ruolo: role,
+            esce: esce, entra: entra,
+            guadagnoUndici: guadagnoUndici,
+            guadagnoRosa: round1(entra.resaResidua - esce.resaResidua)
+          });
+        }));
+      });
+      out.sort((a, b) => b.guadagnoUndici - a.guadagnoUndici);
+      // Una sola proposta per giocatore in entrata e per giocatore in uscita:
+      // l'elenco deve essere una lista di mosse possibili, non le stesse due
+      // facce ripetute in tutte le combinazioni.
+      const visti = new Set(), filtrate = [];
+      out.forEach((m) => {
+        const a = 'e' + m.esce.id, b = 'i' + m.entra.id;
+        if (visti.has(a) || visti.has(b)) return;
+        visti.add(a); visti.add(b); filtrate.push(m);
+      });
+      return filtrate.slice(0, limite || 8);
+    }
+
+    /**
+     * VALUTA UNO SCAMBIO fra due squadre.
+     *
+     * Per ciascuna delle due: quanto vale l'undici prima e dopo, e quanto
+     * vale la rosa intera. Uno scambio puo' convenire a entrambe (ognuna
+     * cede dove ha abbondanza) o a una sola: i due numeri vanno letti
+     * insieme, perche' una proposta che all'altro non conviene non passa.
+     *
+     * Controlla anche che le rose restino regolari: nessun reparto oltre il
+     * limite. Un reparto sotto il limite e' ammesso ma segnalato.
+     */
+    valutaScambio(teamA, idsA, teamB, idsB) {
+      const setA = new Set((idsA || []).map(String)), setB = new Set((idsB || []).map(String));
+      const pA = (teamA && teamA.players) || [], pB = (teamB && teamB.players) || [];
+      const daA = pA.filter((p) => setA.has(String(p.id)));
+      const daB = pB.filter((p) => setB.has(String(p.id)));
+      const lato = (team, tutti, cede, riceve) => {
+        const prima = this.analisiRosa(team);
+        const rosaDopo = tutti.filter((p) => cede.indexOf(p) === -1).concat(riceve);
+        const dopo = this.analisiRosa({ players: rosaDopo, budget: team.budget });
+        const conta = { POR: 0, DIF: 0, CEN: 0, ATT: 0 };
+        rosaDopo.forEach((p) => { const r = normRole(p.role); if (conta[r] !== undefined) conta[r]++; });
+        const oltre = ROLES.filter((r) => conta[r] > (this.roleLimits[r] || 0));
+        const sotto = ROLES.filter((r) => conta[r] < (this.roleLimits[r] || 0));
+        return {
+          squadra: team.name,
+          cede: cede.map((p) => p.name), riceve: riceve.map((p) => p.name),
+          undiciPrima: prima.valoreUndici, undiciDopo: dopo.valoreUndici,
+          deltaUndici: round1(dopo.valoreUndici - prima.valoreUndici),
+          deltaRosa: round1(dopo.valoreRosa - prima.valoreRosa),
+          moduloDopo: dopo.modulo,
+          repartiOltreLimite: oltre, repartiIncompleti: sotto
+        };
+      };
+      const a = lato(teamA, pA, daA, daB), b = lato(teamB, pB, daB, daA);
+      const regolare = !a.repartiOltreLimite.length && !b.repartiOltreLimite.length;
+      let giudizio;
+      if (!daA.length && !daB.length) giudizio = 'Seleziona almeno un giocatore.';
+      else if (!regolare) giudizio = 'Scambio non regolare: un reparto supererebbe il limite di rosa.';
+      else if (a.deltaUndici > 1 && b.deltaUndici > 1) giudizio = 'Conviene a entrambe le squadre.';
+      else if (a.deltaUndici > 1 && b.deltaUndici < -1) giudizio = 'Conviene a ' + a.squadra + ', non a ' + b.squadra + ': difficile che venga accettato.';
+      else if (a.deltaUndici < -1 && b.deltaUndici > 1) giudizio = 'Conviene a ' + b.squadra + ', non a ' + a.squadra + '.';
+      else if (a.deltaUndici < -1 && b.deltaUndici < -1) giudizio = 'Non conviene a nessuna delle due.';
+      else giudizio = 'Sostanzialmente alla pari sugli undici titolari.';
+      return { a: a, b: b, regolare: regolare, giudizio: giudizio };
     }
 
     /**

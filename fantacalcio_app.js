@@ -1,5 +1,5 @@
         // ==========================================
-        // FANTACALCIO v3.9.9.50 - APP LOGIC
+        // FANTACALCIO v3.9.9.52 - APP LOGIC
         // ==========================================
 
         // COSTANTI
@@ -35,6 +35,11 @@
                 // passano dall'asta, quindi ogni prezzo e' un prezzo di
                 // mercato e va letto come tale.
                 riconferme: null,
+                // Mercato di riparazione: chi svincola recupera meta' del
+                // prezzo pagato (arrotondata per eccesso), tutto se il
+                // giocatore ha lasciato la Serie A. Negli scambi fra squadre
+                // sono ammessi anche i crediti (conguaglio).
+                svincolo: { quota: 0.5, quotaFuoriSerieA: 1 },
                 storico: 'STORICO_MANAGER'
             },
             lega1996: {
@@ -60,6 +65,10 @@
                 // un A+ a 3 crediti sembra un'anomalia d'asta e sballa le
                 // letture sull'inflazione dei reparti.
                 riconferme: { max: 3, maxPerRuolo: 1 },
+                // Regola di rimborso allo svincolo non nota (chiesta a
+                // Polibio il 16 novembre 2026, da verificare con la lega):
+                // l'app chiede ogni volta quanti crediti restituire.
+                svincolo: null,
                 storico: 'STORICO_MANAGER_1996'
             }
         };
@@ -127,6 +136,7 @@
                 orderConfirmed = false;
                 teamNamesConfirmed = false;
                 undoStack = [];
+                riparazioneLog = [];
                 turnoIndex = 0;
                 phaseOverride = null;
                 try {
@@ -289,6 +299,10 @@
         // posizione del turno di chiamata. Tenuto a 30 voci: serve a
         // correggere un errore appena fatto, non a rifare l'asta.
         let undoStack = [];
+        // Operazioni del mercato di riparazione (svincoli, acquisti, scambi),
+        // nell'ordine in cui sono state fatte: servono per annullarle e
+        // restano nel file dell'asta come storia di cosa e' cambiato.
+        let riparazioneLog = [];
         const UNDO_MAX = 30;
 
         // Filtro sui calciatori specialisti dei piazzati (campo setPieces)
@@ -300,7 +314,7 @@
          * nell'HTML: se non coincidono, il browser sta usando file di
          * versioni diverse — quasi sempre per una cache non aggiornata.
          */
-        const APP_VERSION = '3.9.9.50';
+        const APP_VERSION = '3.9.9.52';
 
         /**
          * REGOLA DEL TURNO DI CHIAMATA — cambia fra le due leghe.
@@ -389,7 +403,8 @@
                     orderConfirmed: orderConfirmed,
                     turnoIndex: turnoIndex,
                     phaseOverride: phaseOverride,
-                    undoStack: undoStack
+                    undoStack: undoStack,
+                    riparazioneLog: riparazioneLog
                 }));
             } catch (e) { /* spazio esaurito o navigazione privata: si prosegue */ }
         }
@@ -435,6 +450,7 @@
             if (mine && teams[1]) mine.textContent = teams[1].name;
 
             const st = leggiStatoAsta();
+            riparazioneLog = (st && Array.isArray(st.riparazioneLog)) ? st.riparazioneLog : [];
             const sezOrdine = document.getElementById('setupSection');
             if (st && st.orderConfirmed && ordineValido(st.teamOrder)) {
                 teamOrder = st.teamOrder;
@@ -460,6 +476,397 @@
             return true;
         }
         window.ripristinaSessione = ripristinaSessione;
+
+        /* ==========================================================
+         * MERCATO DI RIPARAZIONE E SCAMBI (v3.9.9.52)
+         *
+         * L'asta ragiona per reparti in sequenza e turni di chiamata; a
+         * gennaio servono tre operazioni diverse, che qui non passano dal
+         * turno ne' dalla fase:
+         *
+         *   svincolo  - un giocatore esce dalla rosa, tornano dei crediti
+         *   acquisto  - un giocatore libero entra, se c'e' lo slot nel ruolo
+         *   scambio   - giocatori (ed eventuali crediti) fra due squadre
+         *
+         * CONTABILITA'. Resta vero che  budget + spent = budget iniziale.
+         * "spent" sono i crediti davvero usciti: dopo uno svincolo a meta'
+         * prezzo l'altra meta' resta spesa anche se il giocatore non c'e'
+         * piu', quindi spent NON coincide piu' con la somma dei prezzi in
+         * rosa. In uno scambio i prezzi seguono i giocatori (servono per il
+         * rimborso di un eventuale svincolo futuro) ma i crediti non si
+         * muovono, salvo il conguaglio pattuito.
+         *
+         * Ogni operazione finisce in riparazioneLog e si puo' annullare,
+         * dall'ultima a ritroso.
+         * ========================================================== */
+
+        function contaRuolo(team, role) {
+            return team.players.filter(p => p.role === role).length;
+        }
+
+        function proprietarioDi(playerId) {
+            for (let k = 1; k <= 8; k++) {
+                if (teams[k] && teams[k].players.some(p => String(p.id) === String(playerId))) return k;
+            }
+            return null;
+        }
+
+        /** Crediti che la regola di lega restituisce allo svincolo; null se non c'e' regola. */
+        function rimborsoPrevisto(rec, fuoriSerieA) {
+            const regola = lega().svincolo;
+            if (!regola) return null;
+            const quota = fuoriSerieA ? regola.quotaFuoriSerieA : regola.quota;
+            // Meta' di un prezzo dispari: si arrotonda PER ECCESSO (7 crediti
+            // ne rendono 4). Confermato da Polibio il 16 novembre 2026.
+            return Math.ceil((Number(rec.price) || 0) * quota);
+        }
+
+        function dopoOperazioneRiparazione() {
+            saveData();
+            updateDisplay();
+            renderTeamsOverview();
+            filterAvailable();
+            setupAutocomplete();
+            renderRiparazione();
+        }
+
+        function svincolaGiocatore(teamNum, playerId, rimborso) {
+            const team = teams[teamNum];
+            if (!team) return { ok: false, errore: 'Squadra non trovata.' };
+            const idx = team.players.findIndex(p => String(p.id) === String(playerId));
+            if (idx === -1) return { ok: false, errore: 'Il giocatore non e\' in questa rosa.' };
+            const r = Number(rimborso);
+            const rec = team.players[idx];
+            if (!Number.isInteger(r) || r < 0) return { ok: false, errore: 'Il rimborso deve essere un numero intero, zero o piu\'.' };
+            if (r > (Number(rec.price) || 0)) return { ok: false, errore: 'Il rimborso non puo\' superare il prezzo pagato (' + rec.price + ').' };
+            team.players.splice(idx, 1);
+            team.budget += r;
+            team.spent -= r;
+            riparazioneLog.push({ tipo: 'svincolo', quando: new Date().toISOString(),
+                                  teamNum: Number(teamNum), giocatore: rec, posizione: idx, rimborso: r });
+            return { ok: true, giocatore: rec, rimborso: r };
+        }
+
+        function acquistaInRiparazione(teamNum, playerId, prezzo) {
+            const team = teams[teamNum];
+            if (!team) return { ok: false, errore: 'Squadra non trovata.' };
+            const p = PLAYERS_DATA.find(x => String(x.id) === String(playerId));
+            if (!p) return { ok: false, errore: 'Giocatore non trovato nel listone.' };
+            const pr = Number(prezzo);
+            if (!Number.isInteger(pr) || pr < 1) return { ok: false, errore: 'Il prezzo deve essere un numero intero, almeno 1.' };
+            const padrone = proprietarioDi(p.id);
+            if (padrone) return { ok: false, errore: p.name + ' e\' gia\' di ' + teams[padrone].name + '.' };
+            if (contaRuolo(team, p.role) >= ROLE_LIMITS[p.role]) {
+                return { ok: false, errore: 'Reparto ' + p.role + ' al completo: prima va svincolato qualcuno.' };
+            }
+            if (pr > team.budget) return { ok: false, errore: 'Crediti insufficienti: ne restano ' + team.budget + '.' };
+            const rec = { id: p.id, name: p.name, role: p.role, squad: p.squad, team: p.team,
+                          price: pr, riparazione: true };
+            team.players.push(rec);
+            team.budget -= pr;
+            team.spent += pr;
+            riparazioneLog.push({ tipo: 'acquisto', quando: new Date().toISOString(),
+                                  teamNum: Number(teamNum), giocatore: rec });
+            return { ok: true, giocatore: rec };
+        }
+
+        function applicaScambio(numA, idsA, numB, idsB, conguaglio) {
+            const A = teams[numA], B = teams[numB];
+            if (!A || !B || Number(numA) === Number(numB)) return { ok: false, errore: 'Servono due squadre diverse.' };
+            const sA = new Set((idsA || []).map(String)), sB = new Set((idsB || []).map(String));
+            const daA = A.players.filter(p => sA.has(String(p.id)));
+            const daB = B.players.filter(p => sB.has(String(p.id)));
+            if (daA.length !== sA.size || daB.length !== sB.size) return { ok: false, errore: 'Qualche giocatore non e\' piu\' nella rosa indicata.' };
+            if (!daA.length && !daB.length) return { ok: false, errore: 'Nessun giocatore selezionato.' };
+            // conguaglio > 0: crediti da A a B; < 0: da B ad A
+            const c = Number(conguaglio) || 0;
+            if (!Number.isInteger(c)) return { ok: false, errore: 'Il conguaglio deve essere un numero intero.' };
+            if (c > A.budget) return { ok: false, errore: A.name + ' non ha ' + c + ' crediti.' };
+            if (-c > B.budget) return { ok: false, errore: B.name + ' non ha ' + (-c) + ' crediti.' };
+            const dopoA = A.players.filter(p => !sA.has(String(p.id))).concat(daB);
+            const dopoB = B.players.filter(p => !sB.has(String(p.id))).concat(daA);
+            for (const role of ROLE_ORDER) {
+                if (dopoA.filter(p => p.role === role).length > ROLE_LIMITS[role]) return { ok: false, errore: A.name + ' supererebbe il limite di ' + role + '.' };
+                if (dopoB.filter(p => p.role === role).length > ROLE_LIMITS[role]) return { ok: false, errore: B.name + ' supererebbe il limite di ' + role + '.' };
+            }
+            const primaA = A.players.slice(), primaB = B.players.slice();
+            A.players = dopoA; B.players = dopoB;
+            A.budget -= c; A.spent += c;
+            B.budget += c; B.spent -= c;
+            riparazioneLog.push({ tipo: 'scambio', quando: new Date().toISOString(),
+                                  numA: Number(numA), numB: Number(numB),
+                                  cedutiA: daA.map(p => p.name), cedutiB: daB.map(p => p.name),
+                                  rosaPrimaA: primaA, rosaPrimaB: primaB, conguaglio: c });
+            return { ok: true };
+        }
+
+        function annullaRiparazione() {
+            if (!riparazioneLog.length) return { ok: false, errore: 'Nessuna operazione da annullare.' };
+            const op = riparazioneLog[riparazioneLog.length - 1];
+            if (op.tipo === 'svincolo') {
+                const team = teams[op.teamNum];
+                if (proprietarioDi(op.giocatore.id)) return { ok: false, errore: op.giocatore.name + ' nel frattempo e\' stato preso da un\'altra squadra.' };
+                if (team.budget < op.rimborso) return { ok: false, errore: 'I crediti del rimborso sono gia\' stati spesi.' };
+                team.players.splice(Math.min(op.posizione, team.players.length), 0, op.giocatore);
+                team.budget -= op.rimborso; team.spent += op.rimborso;
+            } else if (op.tipo === 'acquisto') {
+                const team = teams[op.teamNum];
+                const idx = team.players.findIndex(p => String(p.id) === String(op.giocatore.id));
+                if (idx === -1) return { ok: false, errore: op.giocatore.name + ' non e\' piu\' in quella rosa.' };
+                team.players.splice(idx, 1);
+                team.budget += op.giocatore.price; team.spent -= op.giocatore.price;
+            } else if (op.tipo === 'scambio') {
+                const A = teams[op.numA], B = teams[op.numB];
+                A.players = op.rosaPrimaA; B.players = op.rosaPrimaB;
+                A.budget += op.conguaglio; A.spent -= op.conguaglio;
+                B.budget -= op.conguaglio; B.spent += op.conguaglio;
+            }
+            riparazioneLog.pop();
+            return { ok: true, tipo: op.tipo };
+        }
+
+        // ---------------------------------------------- interfaccia del pannello
+
+        let ripSquadra = 1;          // squadra analizzata
+        let ripControparte = 2;      // l'altra squadra dello scambio
+        let ripAperto = false;
+        let ripEsitoScambio = '';
+
+        function toggleRiparazione() {
+            ripAperto = !ripAperto;
+            const corpo = document.getElementById('riparazioneBody');
+            const freccia = document.getElementById('riparazioneChevron');
+            if (corpo) corpo.style.display = ripAperto ? 'block' : 'none';
+            if (freccia) freccia.innerHTML = ripAperto ? '&#9662;' : '&#9656;';
+            if (ripAperto) renderRiparazione();
+        }
+
+        function segno(v) { return (v > 0 ? '+' : '') + v; }
+
+        function renderRiparazione() {
+            const corpo = document.getElementById('riparazioneBody');
+            if (!corpo || !ripAperto) return;
+            if (typeof AI_AGENT === 'undefined' || !AI_AGENT.analisiRosa) {
+                corpo.innerHTML = '<p class="rip-nota">Agente non caricato.</p>';
+                return;
+            }
+            const team = teams[ripSquadra];
+            if (!team || !team.players.length) {
+                corpo.innerHTML = '<p class="rip-nota">Nessuna rosa da analizzare: carica l\'asta conclusa con "Carica Asta".</p>';
+                return;
+            }
+            if (Number(ripControparte) === Number(ripSquadra)) ripControparte = ripSquadra === 1 ? 2 : 1;
+            const an = AI_AGENT.analisiRosa(team);
+            const opzioni = (sel) => Object.keys(teams).map(k =>
+                '<option value="' + k + '"' + (Number(k) === Number(sel) ? ' selected' : '') + '>' +
+                escapeHtml(teams[k].name) + '</option>').join('');
+            const liberi = ROLE_ORDER.filter(r => an.slotLiberi[r] > 0)
+                .map(r => an.slotLiberi[r] + ' ' + r).join(', ');
+
+            let h = '';
+            h += '<div class="rip-barra">';
+            h += '<label>Squadra <select onchange="ripCambiaSquadra(this.value)">' + opzioni(ripSquadra) + '</select></label>';
+            h += '<span>Crediti: <b>' + an.crediti + '</b></span>';
+            h += '<span>Undici migliore (' + (an.modulo || '—') + '): <b>' + an.valoreUndici + ' pt</b></span>';
+            h += '<span>Rosa intera: <b>' + an.valoreRosa + ' pt</b></span>';
+            h += '<span>Giornate che restano: <b>' + an.giornateResidue + '</b></span>';
+            if (liberi) h += '<span class="rip-avviso">Slot liberi: ' + liberi + '</span>';
+            h += '</div>';
+            h += '<p class="rip-nota">I punti sono quelli attesi <b>da qui a fine campionato</b>, in pi&ugrave; di un giocatore preso a 1 credito. ' +
+                 'L\'asterisco indica chi entra nell\'undici migliore. I prezzi del listone non entrano nel calcolo: sono di settembre.</p>';
+
+            // --- rosa
+            h += '<div class="rip-scroll"><table class="rip-tabella"><thead><tr>' +
+                 '<th></th><th>Giocatore</th><th>Pagato</th><th>Presenze</th><th>Fm anno</th>' +
+                 '<th>Fm attesa</th><th>Titolarit&agrave;</th><th>Punti</th><th>Era infortunato</th><th></th></tr></thead><tbody>';
+            let ruoloPrec = '';
+            an.schede.forEach(x => {
+                if (x.ruolo !== ruoloPrec) {
+                    h += '<tr class="rip-ruolo"><td colspan="10">' + x.ruolo + '</td></tr>';
+                    ruoloPrec = x.ruolo;
+                }
+                const id = escapeHtml(String(x.id));
+                h += '<tr class="' + (x.titolare ? 'rip-titolare' : '') + '">' +
+                     '<td>' + (x.titolare ? '*' : '') + '</td>' +
+                     '<td>' + escapeHtml(x.nome) + ' <span class="rip-club">' + escapeHtml(x.squadra || '') + '</span></td>' +
+                     '<td>' + x.prezzoPagato + (x.riconferma ? ' R' : '') + '</td>' +
+                     '<td>' + (x.nelListone ? x.presenze + '/' + x.giornate : '—') + '</td>' +
+                     '<td>' + (x.fmStagione !== null ? x.fmStagione : '—') + '</td>' +
+                     '<td>' + (x.fmAttesa !== null ? x.fmAttesa : '—') + '</td>' +
+                     '<td>' + (x.nelListone ? x.titolaritaStimata + '%' : '—') +
+                         (x.dubbioTitolarita ? ' <span class="rip-avviso" title="Ha giocato molto meno del previsto: panchina o infortunio?">?</span>' : '') + '</td>' +
+                     '<td class="' + (x.resaResidua < 0 ? 'rip-neg' : '') + '"><b>' + x.resaResidua + '</b></td>' +
+                     '<td>' + (x.nelListone ? '<input type="checkbox" ' + (x.fiduciaManuale ? 'checked ' : '') +
+                         'onchange="ripFiducia(\'' + id + '\', this.checked)">' : '') + '</td>' +
+                     '<td><button class="rip-btn" onclick="ripSvincola(\'' + id + '\')">Svincola</button></td>' +
+                     '</tr>';
+            });
+            h += '</tbody></table></div>';
+            h += '<p class="rip-nota">"Era infortunato": spunta chi ha saltato partite per infortunio ed &egrave; rientrato. ' +
+                 'L\'agente non distingue un infortunio da una panchina: con la spunta torna a valere la titolarit&agrave; prevista a settembre.</p>';
+
+            // --- cambi consigliati
+            const mosse = AI_AGENT.sostituzioni(team, 8);
+            h += '<h4 class="rip-titolo">Cambi che migliorano l\'undici</h4>';
+            if (!mosse.length) {
+                h += '<p class="rip-nota">Nessun giocatore libero migliorerebbe l\'undici di almeno 2 punti.</p>';
+            } else {
+                h += '<div class="rip-scroll"><table class="rip-tabella"><thead><tr><th>Ruolo</th><th>Esce</th><th>Entra (libero)</th>' +
+                     '<th>Presenze</th><th>Guadagno undici</th><th></th></tr></thead><tbody>';
+                mosse.forEach(m => {
+                    h += '<tr><td>' + m.ruolo + '</td>' +
+                         '<td>' + escapeHtml(m.esce.nome) + ' (' + m.esce.resaResidua + ')</td>' +
+                         '<td>' + escapeHtml(m.entra.nome) + ' <span class="rip-club">' + escapeHtml(m.entra.squadra || '') + '</span> (' + m.entra.resaResidua + ')</td>' +
+                         '<td>' + m.entra.presenze + '/' + m.entra.giornate + '</td>' +
+                         '<td><b>' + segno(m.guadagnoUndici) + ' pt</b></td>' +
+                         '<td><button class="rip-btn" onclick="ripAcquista(\'' + escapeHtml(String(m.entra.id)) + '\')">Acquista</button></td></tr>';
+                });
+                h += '</tbody></table></div>';
+                h += '<p class="rip-nota">Ogni riga &egrave; valutata da sola: due cambi nello stesso reparto possono valere meno della somma. ' +
+                     'Per acquistare serve uno slot libero nel ruolo, quindi prima lo svincolo.</p>';
+            }
+            h += '<div class="rip-riga"><label>Acquista un altro giocatore libero: ' +
+                 '<input type="text" id="ripNomeLibero" list="ripElencoLiberi" placeholder="nome" autocomplete="off"></label>' +
+                 '<datalist id="ripElencoLiberi">' +
+                 AI_AGENT.liberi().slice().sort((a, b) => a.name.localeCompare(b.name))
+                     .map(p => '<option value="' + escapeHtml(p.name) + '">' + p.role + ' ' + escapeHtml(p.team || '') + '</option>').join('') +
+                 '</datalist> <button class="rip-btn" onclick="ripAcquistaPerNome()">Acquista</button></div>';
+
+            // --- scambio
+            const altro = teams[ripControparte];
+            const elenco = (t, gruppo) => AI_AGENT.analisiRosa(t).schede.map(x =>
+                '<label class="rip-check"><input type="checkbox" name="' + gruppo + '" value="' + escapeHtml(String(x.id)) + '"> ' +
+                x.ruolo + ' ' + escapeHtml(x.nome) + ' <span class="rip-club">' + x.resaResidua + ' pt</span></label>').join('');
+            h += '<h4 class="rip-titolo">Valuta uno scambio</h4>';
+            h += '<div class="rip-scambio">' +
+                 '<div><div class="rip-sub">' + escapeHtml(team.name) + ' cede</div>' + elenco(team, 'ripCedeA') + '</div>' +
+                 '<div><div class="rip-sub">con <select onchange="ripCambiaControparte(this.value)">' +
+                     Object.keys(teams).filter(k => Number(k) !== Number(ripSquadra)).map(k =>
+                         '<option value="' + k + '"' + (Number(k) === Number(ripControparte) ? ' selected' : '') + '>' +
+                         escapeHtml(teams[k].name) + '</option>').join('') +
+                     '</select>, che cede</div>' + (altro ? elenco(altro, 'ripCedeB') : '') + '</div>' +
+                 '</div>';
+            h += '<div class="rip-riga"><label>Crediti da ' + escapeHtml(team.name) + ' all\'altra squadra (negativo = il contrario): ' +
+                 '<input type="number" id="ripConguaglio" value="0" step="1" style="width:70px"></label> ' +
+                 '<button class="rip-btn" onclick="ripValutaScambio()">Valuta</button> ' +
+                 '<button class="rip-btn" onclick="ripApplicaScambio()">Applica lo scambio</button></div>';
+            h += '<div id="ripEsitoScambio" class="rip-esito">' + ripEsitoScambio + '</div>';
+
+            // --- registro
+            h += '<h4 class="rip-titolo">Operazioni registrate (' + riparazioneLog.length + ')</h4>';
+            if (riparazioneLog.length) {
+                h += '<ul class="rip-log">' + riparazioneLog.slice().reverse().slice(0, 12).map(op => {
+                    if (op.tipo === 'svincolo') return '<li>Svincolo: ' + escapeHtml(teams[op.teamNum].name) + ' lascia ' + escapeHtml(op.giocatore.name) + ', +' + op.rimborso + ' crediti</li>';
+                    if (op.tipo === 'acquisto') return '<li>Acquisto: ' + escapeHtml(teams[op.teamNum].name) + ' prende ' + escapeHtml(op.giocatore.name) + ' a ' + op.giocatore.price + '</li>';
+                    return '<li>Scambio: ' + escapeHtml(teams[op.numA].name) + ' d&agrave; ' + escapeHtml(op.cedutiA.join(', ') || 'nessuno') +
+                           ' a ' + escapeHtml(teams[op.numB].name) + ' per ' + escapeHtml(op.cedutiB.join(', ') || 'nessuno') +
+                           (op.conguaglio ? ' (conguaglio ' + op.conguaglio + ')' : '') + '</li>';
+                }).join('') + '</ul>';
+                h += '<button class="rip-btn" onclick="ripAnnulla()">Annulla l\'ultima operazione</button>';
+            } else {
+                h += '<p class="rip-nota">Ancora nessuna. Le operazioni restano nel file salvato con "Salva Asta".</p>';
+            }
+            corpo.innerHTML = h;
+        }
+
+        function ripCambiaSquadra(v) { ripSquadra = Number(v); ripEsitoScambio = ''; renderRiparazione(); }
+        function ripCambiaControparte(v) { ripControparte = Number(v); ripEsitoScambio = ''; renderRiparazione(); }
+
+        function ripFiducia(id, attiva) {
+            const p = PLAYERS_DATA.find(x => String(x.id) === String(id));
+            if (p) AI_AGENT.impostaFiduciaManuale(p.id, attiva);
+            renderRiparazione();
+        }
+
+        function ripSvincola(id) {
+            const team = teams[ripSquadra];
+            const rec = team.players.find(p => String(p.id) === String(id));
+            if (!rec) return;
+            const previsto = rimborsoPrevisto(rec, false);
+            const regola = lega().svincolo;
+            const testo = 'Svincolo di ' + rec.name + ' (pagato ' + rec.price + ') da ' + team.name + '.\n' +
+                (regola
+                    ? 'Regola di lega: torna ' + previsto + ' (meta\' del prezzo); se ha lasciato la Serie A torna ' + rimborsoPrevisto(rec, true) + '.\n'
+                    : 'Per questa lega la regola di rimborso non e\' impostata.\n') +
+                'Crediti da restituire:';
+            const risposta = prompt(testo, previsto !== null ? String(previsto) : '0');
+            if (risposta === null) return;
+            const esito = svincolaGiocatore(ripSquadra, id, Number(String(risposta).trim()));
+            if (!esito.ok) { showMessage(esito.errore, 'error'); return; }
+            dopoOperazioneRiparazione();
+            showMessage(rec.name + ' svincolato: ' + esito.rimborso + ' crediti a ' + team.name + '.', 'success');
+        }
+
+        function ripAcquista(id) {
+            const p = PLAYERS_DATA.find(x => String(x.id) === String(id));
+            if (!p) { showMessage('Giocatore non trovato nel listone.', 'error'); return; }
+            const team = teams[ripSquadra];
+            const risposta = prompt('Acquisto di ' + p.name + ' (' + p.role + ') per ' + team.name +
+                                    '.\nCrediti disponibili: ' + team.budget + '.\nPrezzo pagato:', '1');
+            if (risposta === null) return;
+            const esito = acquistaInRiparazione(ripSquadra, p.id, Number(String(risposta).trim()));
+            if (!esito.ok) { showMessage(esito.errore, 'error'); return; }
+            dopoOperazioneRiparazione();
+            showMessage(p.name + ' acquistato da ' + team.name + ' a ' + esito.giocatore.price + '.', 'success');
+        }
+
+        function ripAcquistaPerNome() {
+            const campo = document.getElementById('ripNomeLibero');
+            const nome = campo ? String(campo.value || '').trim().toUpperCase() : '';
+            if (!nome) return;
+            const trovati = AI_AGENT.liberi().filter(p => p.name.toUpperCase() === nome);
+            if (trovati.length !== 1) {
+                showMessage(trovati.length ? 'Piu\' giocatori con questo nome: scegli dall\'elenco.' : 'Nessun giocatore libero con questo nome.', 'error');
+                return;
+            }
+            ripAcquista(trovati[0].id);
+        }
+
+        function ripSelezionati(gruppo) {
+            return Array.prototype.slice.call(document.querySelectorAll('input[name="' + gruppo + '"]:checked'))
+                .map(el => el.value);
+        }
+
+        function ripValutaScambio() {
+            const A = teams[ripSquadra], B = teams[ripControparte];
+            const idsA = ripSelezionati('ripCedeA'), idsB = ripSelezionati('ripCedeB');
+            const v = AI_AGENT.valutaScambio(A, idsA, B, idsB);
+            const riga = (l) => '<div><b>' + escapeHtml(l.squadra) + '</b>: cede ' + escapeHtml(l.cede.join(', ') || 'nessuno') +
+                ', riceve ' + escapeHtml(l.riceve.join(', ') || 'nessuno') + ' &rarr; undici ' + l.undiciPrima + ' &rarr; ' + l.undiciDopo +
+                ' (<b>' + segno(l.deltaUndici) + ' pt</b>), rosa intera ' + segno(l.deltaRosa) + ' pt' +
+                (l.repartiOltreLimite.length ? ' <span class="rip-avviso">oltre il limite: ' + l.repartiOltreLimite.join(', ') + '</span>' : '') +
+                (l.repartiIncompleti.length ? ' <span class="rip-avviso">reparto incompleto: ' + l.repartiIncompleti.join(', ') + '</span>' : '') + '</div>';
+            ripEsitoScambio = '<div class="rip-giudizio">' + escapeHtml(v.giudizio) + '</div>' + riga(v.a) + riga(v.b);
+            const box = document.getElementById('ripEsitoScambio');
+            if (box) box.innerHTML = ripEsitoScambio;
+            return v;
+        }
+
+        function ripApplicaScambio() {
+            const A = teams[ripSquadra], B = teams[ripControparte];
+            const idsA = ripSelezionati('ripCedeA'), idsB = ripSelezionati('ripCedeB');
+            const campo = document.getElementById('ripConguaglio');
+            const c = campo ? Number(campo.value) || 0 : 0;
+            if (!confirm('Registrare lo scambio fra ' + A.name + ' e ' + B.name + '?')) return;
+            const esito = applicaScambio(ripSquadra, idsA, ripControparte, idsB, c);
+            if (!esito.ok) { showMessage(esito.errore, 'error'); return; }
+            ripEsitoScambio = '';
+            dopoOperazioneRiparazione();
+            showMessage('Scambio registrato.', 'success');
+        }
+
+        function ripAnnulla() {
+            const esito = annullaRiparazione();
+            if (!esito.ok) { showMessage(esito.errore, 'error'); return; }
+            dopoOperazioneRiparazione();
+            showMessage('Operazione annullata.', 'success');
+        }
+
+        Object.assign(window, {
+            toggleRiparazione, renderRiparazione, ripCambiaSquadra, ripCambiaControparte, ripFiducia,
+            ripSvincola, ripAcquista, ripAcquistaPerNome, ripValutaScambio, ripApplicaScambio, ripAnnulla,
+            svincolaGiocatore, acquistaInRiparazione, applicaScambio, annullaRiparazione
+        });
 
         // Vista della Panoramica Squadre: 'expanded' o 'compact'.
         // Dichiarata qui, insieme agli altri globali, perche' ora la legge
@@ -782,6 +1189,7 @@
             azzeraNoteAvversari();
             azzeraEsitoReport();
             undoStack = [];
+            riparazioneLog = [];
             phaseOverride = null;
             teamNamesConfirmed = false;
             orderConfirmed = false;
@@ -1042,6 +1450,7 @@
                 lega: legaCorrente,
                 turnoIndex: turnoIndex,
                 phaseOverride: phaseOverride,
+                riparazioneLog: riparazioneLog,
                 teams: teams,
                 teamOrder: teamOrder,
                 conversationHistory: conversationHistory,
@@ -1089,6 +1498,7 @@
                     phaseOverride = ROLE_ORDER.includes(data.phaseOverride) ? data.phaseOverride : null;
                     // Gli annullamenti si riferivano all'asta di prima.
                     undoStack = [];
+                    riparazioneLog = Array.isArray(data.riparazioneLog) ? data.riparazioneLog : [];
                     
                     // MIGRAZIONE: Riempi il campo 'team' mancante per giocatori vecchi
                     for (let i = 1; i <= 8; i++) {
@@ -2788,6 +3198,7 @@
                 // Anche lo storico degli annullamenti si riferisce ad acquisti
                 // che non esistono piu'.
                 undoStack = [];
+                riparazioneLog = [];
 
                 // Nuova asta con lo stesso ordine: il turno riparte dal primo
                 turnoIndex = 0;

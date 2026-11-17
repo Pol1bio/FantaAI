@@ -40,7 +40,8 @@
   (causa non verificata: forse espulsioni o partite senza voto). Il valore
   del file è stato preso così com'è.
 - Dalla versione 3.9.9.50 l'agente usa **anche la stagione in corso** per
-  stimare la resa (fantamedia e presenze 2026/27): vedi §17.
+  stimare la resa (fantamedia e presenze 2026/27): vedi §17. I parametri
+  sono stati verificati sui dati nella 3.9.9.51: vedi §18.
 - Per rifare l'aggiornamento: `estrai_statistiche.py` (dall'Excel a JSON) e
   poi `aggiorna_listone.js`, entrambi nel repo.
 
@@ -339,9 +340,9 @@ titolarità`. Lo zero a 6 per tutti i ruoli dava tre effetti sbagliati:
 Ora lo zero è il **giocatore di rimpiazzo** del ruolo
 (`AI_AGENT.rimpiazzo(role)`): il quartile basso della fantamedia fra chi ha
 almeno 20 presenze. Valori col listone attuale: POR 5,10 (4,82 senza
-imbattibilità), DIF 5,84, CEN 6,03, ATT 6,45. Chi ha poche presenze viene
-tirato verso questo valore, non verso il 6; chi non ha storico vale 0, cioè
-"come un rimpiazzo". Sotto zero non si divide più per il prezzo.
+imbattibilità), DIF 5,84, CEN 6,03, ATT 6,45. Sotto zero non si divide più
+per il prezzo. *(Dalla 3.9.9.51 chi ha poche presenze viene tirato verso la
+mediana del ruolo, non più verso il rimpiazzo: vedi §18.)*
 
 `puntiAttesi` va quindi letto come **punti a stagione in più di un giocatore
 preso a 1 credito**, non in più della sufficienza.
@@ -370,20 +371,99 @@ almeno 10 presenze (verificato: la media pesata così calcolata riproduce
 si applica sul campione efficace `nS + 2 × nC`, fiducia piena a 50.
 
 **Titolarità** (`AI_AGENT.titolaritaStimata(p)`): `expectedTitolarita` di
-settembre corretta con le presenze reali. La previsione vale 19 giornate, i
-fatti valgono le giornate giocate: all'11ª le presenze pesano il 37%.
+settembre corretta con le presenze reali. La previsione vale 5 giornate, i
+fatti valgono le giornate giocate: all'11ª le presenze pesano per due terzi.
+*(Nella 3.9.9.50 la previsione valeva 19 giornate: la verifica di §18 ha
+detto che era troppo.)*
 
-Due scelte, non misure: il peso doppio e le 19 giornate. Stanno in cima a
-`fantacalcio_ai.js` (`PESO_STAGIONE_CORRENTE`, `GIORNATE_PRIOR_TITOLARITA`).
+I parametri stanno in cima a `fantacalcio_ai.js` (`PESO_STAGIONE_CORRENTE`,
+`GIORNATE_PRIOR_TITOLARITA`, `FIDUCIA_K`) e sono tarati sui dati: §18.
 
 **Limite**: le presenze non distinguono chi ha perso il posto da chi è stato
-infortunato. Martinez L. (5 presenze su 11) scende dal 92% al 75% di
+infortunato. Martinez L. (5 presenze su 11) scende dal 92% al 60% di
 titolarità stimata: se era fermo per infortunio, è sottovalutato.
-`infortuni_serie_a.js` è fermo all'8 settembre e non aiuta.
+`infortuni_serie_a.js` è fermo all'8 settembre e non aiuta. Rimedio a mano:
+nel pannello di riparazione la spunta "Era infortunato" riporta quel
+giocatore alla titolarità prevista a settembre
+(`AI_AGENT.impostaFiduciaManuale`).
 
 Esempi all'11ª giornata: Rabiot fantamedia 6,73 storica e 8,67 quest'anno →
 7,18; Dimarco 7,24 e 6,20 → 7,06; Mora (nessuno storico, 9 presenze a 7,89)
-passa da "come un rimpiazzo" a +21 punti stagione.
+passa da "come un rimpiazzo" a +28 punti stagione.
+
+## 18. I parametri verificati sui dati (16 novembre 2026, v3.9.9.51)
+
+Tre prove, rifacibili con `backtest_parametri.js` (serve anche il file delle
+statistiche a 5 giornate convertito in `stat5.json`). L'errore è lo scarto
+tipico fra fantamedia prevista e fantamedia reale, pesato per le presenze.
+
+**A. Quanto fidarsi di poche partite, e verso cosa tirare.** Previsione della
+fantamedia 2025/26 dalle due stagioni precedenti, 193 giocatori:
+
+| Regola | Errore |
+|---|---|
+| nessun temperamento | 0,425 |
+| fiducia piena a 50 presenze, verso il quartile basso (3.9.9.50) | 0,392 |
+| **fiducia = n / (n + 25), verso la mediana del ruolo (ora)** | **0,354** |
+
+Stesso verso, più debole, prevedendo la stagione in corso dalle tre
+precedenti (0,596 → 0,590). Il quartile basso resta lo zero della scala (il
+rimpiazzo); come ipotesi su un giocatore poco noto era troppo pessimista.
+
+**B. Peso della stagione in corso.** Previsione delle giornate 6-11 da
+storico più prime 5 giornate, 246 giocatori: errore minimo con peso fra 2 e
+3, in risalita oltre 4. Per chi ha già uno storico le partite di quest'anno
+aggiungono poco (ottimo fra 1 e 2); per i 63 senza storico sono decisive
+(0,99 → 0,89). **Confermato il peso 2.** Con la regola nuova l'errore
+complessivo di questa prova scende da 0,809 a 0,795.
+
+**C. Titolarità.** Previsione della quota di presenze nelle giornate 6-11,
+531 giocatori:
+
+| Cosa si usa | Errore |
+|---|---|
+| solo la previsione di settembre | 0,375 |
+| solo le presenze delle prime 5 giornate | 0,340 |
+| previsione che vale 19 giornate (3.9.9.50) | 0,339 |
+| **previsione che vale 2-5 giornate (ora: 5)** | **0,312** |
+
+La previsione di settembre era ottimista: chi era dato all'80-89% ha giocato
+il 68% delle partite, chi al 50-59% il 27%.
+
+**Limiti di queste prove.** La C misura un orizzonte di 6 giornate, non un
+girone: su tempi lunghi gli infortunati rientrano, per questo si è scelto 5
+e non 2. A e B poggiano su 200-250 giocatori e su chi ha continuato a
+giocare. Gli errori restano grandi in assoluto: la fantamedia di un singolo
+giocatore su poche partite è in buona parte caso.
+
+## 19. Mercato di riparazione e scambi (16 novembre 2026, v3.9.9.51)
+
+Pannello "Mercato di riparazione e scambi" nell'app, sotto la panoramica
+delle squadre. Lavora sulle rose dell'asta conclusa (ricaricata o ripresa).
+
+- **Unità di misura**: punti attesi **da qui a fine campionato**, in più del
+  rimpiazzo del ruolo (`AI_AGENT.resaResidua`). I prezzi del listone non
+  entrano: sono di settembre.
+- **Valore di una rosa** = l'undici migliore schierabile
+  (`AI_AGENT.migliorFormazione`), non la somma dei 25. A Fantalissandria si
+  considerano solo i moduli con almeno 4 difensori (condizione del
+  modificatore). La somma della rosa intera è mostrata a parte.
+- **Cambi consigliati** (`AI_AGENT.sostituzioni`): libero migliore al posto
+  del peggiore in rosa, solo se l'undici guadagna almeno 2 punti.
+- **Scambi** (`AI_AGENT.valutaScambio`): effetto sull'undici di entrambe le
+  squadre; rifiuta gli scambi che portano un reparto oltre il limite.
+- **Operazioni** (in `fantacalcio_app.js`): `svincolaGiocatore`,
+  `acquistaInRiparazione`, `applicaScambio`, `annullaRiparazione`. Finiscono
+  in `riparazioneLog`, salvato nel browser e nel file dell'asta.
+- **Contabilità**: resta `budget + spent = budget iniziale`. Dopo uno
+  svincolo la quota non rimborsata resta in `spent`, che quindi non coincide
+  più con la somma dei prezzi in rosa. Negli scambi i prezzi seguono i
+  giocatori, i crediti no (salvo conguaglio).
+- **Rimborso allo svincolo**: per lega, in `LEGHE[...].svincolo`.
+  Fantalissandria: metà del prezzo arrotondata **per eccesso** (7 → 4,
+  confermato da Polibio, dalla 3.9.9.52), tutto se il giocatore ha lasciato
+  la Serie A; negli scambi sono ammessi i crediti. Lega 1996: regola **non
+  nota** (da chiedere alla lega), l'app chiede l'importo ogni volta.
 
 ---
 

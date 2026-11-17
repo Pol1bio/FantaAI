@@ -1487,3 +1487,61 @@ input:checked + .toggle-slider:before {
 .setup-input-group select {
     width: 100%;
 }
+
+
+/* ============================================================
+   MERCATO DI RIPARAZIONE E SCAMBI (v3.9.9.51)
+   ============================================================ */
+.rip-toggle {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    color: #93c5fd;
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 14px 18px;
+    cursor: pointer;
+}
+.rip-body {
+    background: #1e293b;
+    border: 1px solid #334155;
+    border-top: none;
+    border-radius: 0 0 8px 8px;
+    padding: 16px 18px;
+    font-size: 13px;
+    color: #e2e8f0;
+}
+.rip-barra { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-bottom: 8px; }
+.rip-barra select, .rip-sub select, .rip-riga input {
+    background: #0f172a; color: #e2e8f0; border: 1px solid #334155; border-radius: 4px; padding: 5px 8px; font-size: 13px;
+}
+.rip-nota { color: #94a3b8; font-size: 12px; line-height: 1.5; margin: 6px 0 10px; }
+.rip-titolo { color: #93c5fd; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; margin: 18px 0 8px; }
+.rip-scroll { overflow-x: auto; }
+.rip-tabella { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.rip-tabella th { text-align: left; color: #94a3b8; font-weight: 600; padding: 6px 8px; border-bottom: 1px solid #334155; white-space: nowrap; }
+.rip-tabella td { padding: 5px 8px; border-bottom: 1px solid #263348; white-space: nowrap; }
+.rip-ruolo td { color: #93c5fd; font-weight: 700; background: #172033; letter-spacing: 1px; }
+.rip-titolare td { background: rgba(59, 130, 246, 0.08); }
+.rip-club { color: #94a3b8; font-size: 11px; }
+.rip-neg { color: #fca5a5; }
+.rip-avviso { color: #fbbf24; }
+.rip-btn {
+    background: #334155; color: #e2e8f0; border: 1px solid #475569; border-radius: 4px;
+    padding: 5px 10px; font-size: 12px; cursor: pointer;
+}
+.rip-btn:hover { background: #475569; }
+.rip-riga { margin: 10px 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.rip-scambio { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rip-sub { color: #cbd5e1; font-weight: 600; margin-bottom: 6px; }
+.rip-check { display: block; padding: 3px 0; cursor: pointer; }
+.rip-esito { margin-top: 8px; line-height: 1.6; }
+.rip-giudizio { font-weight: 700; color: #f8fafc; margin-bottom: 4px; }
+.rip-log { margin: 0 0 10px 18px; color: #cbd5e1; line-height: 1.6; }
+@media (max-width: 700px) { .rip-scambio { grid-template-columns: 1fr; } }

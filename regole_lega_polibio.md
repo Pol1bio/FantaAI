@@ -172,6 +172,23 @@ Sono quelle da controllare con più attenzione.*
 
 ---
 
+## 7 bis. Mercato di riparazione
+
+*Fonte: Polibio, a voce. Aggiunto il 16 novembre 2026.*
+
+- Chi **svincola** un proprio giocatore recupera **metà del prezzo** pagato
+  in asta se il giocatore resta in Serie A, **l'intero prezzo** se si è
+  trasferito in un altro campionato.
+- La metà di un prezzo dispari si arrotonda **per eccesso**: 7 crediti ne
+  rendono 4.
+- Negli **scambi fra squadre sono ammessi anche i crediti**.
+- L'app propone il rimborso secondo questa regola e lo lascia correggere.
+
+*(Arrotondamento e crediti negli scambi confermati da Polibio il 16 novembre
+2026.)*
+
+---
+
 ## 8. Punti chiariti
 
 Erano dubbi, ora risolti (risposte del 6 settembre 2026):
